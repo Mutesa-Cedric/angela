@@ -29,20 +29,5 @@ jobs:
           HOST_PORT: ${{ secrets.HOST_PORT }}
           ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
-          ssh -i ~/.ssh/deploy_key ${VPS_USERNAME}@${VPS_HOST} <<ENDSSH
-            cd ${PROJECT_DIR} && git pull origin main
-            cd backend
-            mkdir -p ${DATA_DIR}
-            mkdir -p ${LOGS_DIR}
-            docker build -t ${CONTAINER_NAME} .
-            docker stop ${CONTAINER_NAME} || true
-            docker rm ${CONTAINER_NAME} || true
-            docker run -d \
-              -p ${HOST_PORT}:8000 \
-              -v ${DATA_DIR}:/app/data \
-              -v ${LOGS_DIR}:/app/logs \
-              --env-file ${ENV_FILE} \
-              --name ${CONTAINER_NAME} \
-              --restart unless-stopped \
-              ${CONTAINER_NAME}
-          ENDSSH
+          DEPLOY_SCRIPT="cd ${PROJECT_DIR} && git pull origin main && cd backend && mkdir -p ${DATA_DIR} && mkdir -p ${LOGS_DIR} && docker build -t ${CONTAINER_NAME} . && (docker stop ${CONTAINER_NAME} || true) && (docker rm ${CONTAINER_NAME} || true) && docker run -d -p ${HOST_PORT}:8000 -v ${DATA_DIR}:/app/data -v ${LOGS_DIR}:/app/logs --env-file ${ENV_FILE} --name ${CONTAINER_NAME} --restart unless-stopped ${CONTAINER_NAME}"
+          ssh -i ~/.ssh/deploy_key ${VPS_USERNAME}@${VPS_HOST} "${DEPLOY_SCRIPT}"

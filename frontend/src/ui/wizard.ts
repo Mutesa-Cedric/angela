@@ -10,6 +10,7 @@ import type { Snapshot } from "../types";
 const backdrop = document.getElementById("wizard-backdrop") as HTMLDivElement;
 const card = document.getElementById("wizard-card") as HTMLDivElement;
 const uploadStep = document.getElementById("wizard-upload") as HTMLDivElement;
+const previewStep = document.getElementById("wizard-preview") as HTMLDivElement;
 const mappingStep = document.getElementById("wizard-mapping") as HTMLDivElement;
 const sequenceStep = document.getElementById("wizard-sequence") as HTMLDivElement;
 const readyStep = document.getElementById("wizard-ready") as HTMLDivElement;
@@ -26,6 +27,13 @@ const seqSubtitle = document.getElementById("seq-subtitle") as HTMLDivElement;
 const seqProgressBar = document.getElementById("seq-progress-bar") as HTMLDivElement;
 const seqCounter = document.getElementById("seq-counter") as HTMLDivElement;
 const seqDots = document.querySelectorAll("#seq-steps .seq-dot");
+
+// Preview step elements
+const previewFilename = document.getElementById("preview-filename") as HTMLDivElement;
+const previewStats = document.getElementById("preview-stats") as HTMLDivElement;
+const previewTable = document.getElementById("preview-table") as HTMLDivElement;
+const previewBack = document.getElementById("preview-back") as HTMLButtonElement;
+const previewContinue = document.getElementById("preview-continue") as HTMLButtonElement;
 
 // Mapping select elements
 const MAPPING_FIELDS = ["from_id", "to_id", "amount", "timestamp", "from_bank", "to_bank", "label", "currency"] as const;
@@ -51,6 +59,7 @@ let deps: WizardDeps | null = null;
 let onLoadedCallback: ((snapshot: Snapshot) => void) | null = null;
 let particles: WizardParticles | null = null;
 let pendingFile: File | null = null;
+let pendingPreview: CSVPreview | null = null;
 
 // --- Public API ---
 
@@ -62,6 +71,7 @@ export function show(): void {
   backdrop.classList.remove("hidden", "step-0", "step-1", "step-2", "step-3", "step-4", "reveal");
   card.classList.remove("hidden", "sequencing", "reveal");
   uploadStep.style.display = "";
+  previewStep.style.display = "none";
   mappingStep.style.display = "none";
   sequenceStep.style.display = "none";
   readyStep.style.display = "none";
@@ -69,6 +79,7 @@ export function show(): void {
   sampleBtn.disabled = false;
   dropzone.style.pointerEvents = "auto";
   pendingFile = null;
+  pendingPreview = null;
 }
 
 export function hide(): void {
@@ -115,13 +126,34 @@ sampleBtn.addEventListener("click", () => {
   startUpload(loadSample());
 });
 
+// --- Preview step events ---
+
+previewBack.addEventListener("click", () => {
+  previewStep.style.display = "none";
+  uploadStep.style.display = "";
+  setFormDisabled(false);
+  pendingFile = null;
+  pendingPreview = null;
+});
+
+previewContinue.addEventListener("click", () => {
+  if (!pendingPreview) return;
+  previewStep.style.display = "none";
+  showMappingStep(pendingPreview);
+});
+
 // --- Mapping step events ---
 
 mappingBack.addEventListener("click", () => {
   mappingStep.style.display = "none";
-  uploadStep.style.display = "";
-  setFormDisabled(false);
-  pendingFile = null;
+  // Go back to preview if we have one, otherwise upload
+  if (pendingPreview) {
+    previewStep.style.display = "";
+  } else {
+    uploadStep.style.display = "";
+    setFormDisabled(false);
+    pendingFile = null;
+  }
 });
 
 mappingConfirm.addEventListener("click", () => {
@@ -161,14 +193,93 @@ async function handleFile(file: File): Promise<void> {
     return;
   }
 
-  // CSV files: preview + schema mapping
+  // CSV files: preview + stats → mapping
   try {
     const preview = await previewCSV(file);
     pendingFile = file;
-    showMappingStep(preview);
+    pendingPreview = preview;
+    showPreviewStep(file, preview);
   } catch (err) {
     setFormDisabled(false);
     showError(err instanceof Error ? err.message : "Preview failed");
+  }
+}
+
+function formatNumber(n: number): string {
+  return n.toLocaleString();
+}
+
+function formatAmount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toFixed(2);
+}
+
+function showPreviewStep(file: File, preview: CSVPreview): void {
+  uploadStep.style.display = "none";
+  previewStep.style.display = "";
+
+  // Filename + size
+  const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+  previewFilename.textContent = `${file.name} (${sizeMB} MB)`;
+
+  // Build stat cards
+  const s = preview.stats;
+  const cards: { label: string; value: string; sub?: string }[] = [
+    { label: "Transactions", value: formatNumber(s.total_rows) },
+    { label: "Unique Entities", value: formatNumber(s.unique_entities), sub: `${formatNumber(s.unique_senders)} senders · ${formatNumber(s.unique_receivers)} receivers` },
+  ];
+
+  if (s.amount_min !== null && s.amount_max !== null) {
+    cards.push({
+      label: "Amount Range",
+      value: `${formatAmount(s.amount_min)} – ${formatAmount(s.amount_max)}`,
+      sub: s.amount_mean !== null ? `avg ${formatAmount(s.amount_mean)}` : undefined,
+    });
+  }
+
+  if (s.date_min && s.date_max) {
+    cards.push({ label: "Date Range", value: `${s.date_min} to ${s.date_max}` });
+  }
+
+  if (s.currencies.length > 0) {
+    cards.push({ label: "Currencies", value: s.currencies.join(", ") });
+  }
+
+  if (s.labeled_count !== null) {
+    const pct = s.total_rows > 0 ? ((s.labeled_count / s.total_rows) * 100).toFixed(1) : "0";
+    cards.push({ label: "Labeled Suspicious", value: formatNumber(s.labeled_count), sub: `${pct}% of transactions` });
+  }
+
+  let statsHtml = "";
+  for (const card of cards) {
+    statsHtml += `<div class="preview-stat-card">
+      <div class="preview-stat-value">${esc(card.value)}</div>
+      <div class="preview-stat-label">${esc(card.label)}</div>
+      ${card.sub ? `<div class="preview-stat-sub">${esc(card.sub)}</div>` : ""}
+    </div>`;
+  }
+  previewStats.innerHTML = statsHtml;
+
+  // Build sample data table
+  if (preview.sample_rows.length > 0) {
+    let html = '<table><thead><tr>';
+    for (const col of preview.columns) {
+      html += `<th>${esc(col)}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (const row of preview.sample_rows.slice(0, 3)) {
+      html += '<tr>';
+      for (const cell of row) {
+        html += `<td>${esc(cell)}</td>`;
+      }
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    previewTable.innerHTML = html;
+    previewTable.style.display = "block";
+  } else {
+    previewTable.style.display = "none";
   }
 }
 

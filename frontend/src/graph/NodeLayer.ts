@@ -113,6 +113,9 @@ export class NodeLayer {
   private maxCount: number;
   private needsTransition = false;
 
+  /** NLQ highlight mode — set of entity IDs to emphasize. */
+  private highlightSet: Set<string> | null = null;
+
   /** Glow sprites for high-risk nodes. */
   private glowSprites: THREE.Sprite[] = [];
   private glowMap: THREE.Texture;
@@ -279,9 +282,16 @@ export class NodeLayer {
     } else {
       _color.setRGB(s.r, s.g, s.b);
     }
-    sm.mesh.setColorAt(localIdx, _color);
 
-    // Per-instance emissive via material (shared) — we'll drive it from glow sprites instead
+    // NLQ highlight: dim non-highlighted nodes
+    if (this.highlightSet !== null) {
+      const entityId = this.globalToId.get(globalIdx);
+      if (entityId && !this.highlightSet.has(entityId)) {
+        _color.multiplyScalar(0.15);
+      }
+    }
+
+    sm.mesh.setColorAt(localIdx, _color);
   }
 
   // ── Per-frame animation tick ─────────────────────────────────────
@@ -453,6 +463,30 @@ export class NodeLayer {
         this.applyInstance(sm, local, idx);
         if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
       }
+    }
+  }
+
+  // ── NLQ Highlight ──────────────────────────────────────────────
+
+  /** Highlight a set of entity IDs (dims everything else). */
+  highlight(entityIds: string[]): void {
+    this.highlightSet = new Set(entityIds);
+    this.refreshAllColors();
+  }
+
+  /** Clear NLQ highlight — restore normal colors. */
+  clearHighlight(): void {
+    this.highlightSet = null;
+    this.refreshAllColors();
+  }
+
+  private refreshAllColors(): void {
+    for (const sm of this.meshes.values()) {
+      for (const [global, local] of sm.globalToLocal) {
+        this.applyInstance(sm, local, global);
+      }
+      sm.mesh.instanceMatrix.needsUpdate = true;
+      if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
     }
   }
 

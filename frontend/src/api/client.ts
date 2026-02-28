@@ -104,3 +104,25 @@ export interface ClusterData {
 export function getClusters(t: number): Promise<{ bucket: number; clusters: ClusterData[] }> {
   return fetchJSON(`${BASE}/clusters?t=${t}`);
 }
+
+export interface NLQResult {
+  intent: string;
+  params: Record<string, unknown>;
+  interpretation: string;
+  entity_ids: string[];
+  edges: { from_id: string; to_id: string; amount: number }[];
+  summary: string;
+}
+
+export async function queryNLQ(query: string, bucket: number): Promise<NLQResult> {
+  const res = await fetch(`${BASE}/nlq/parse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, bucket }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `NLQ failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}

@@ -11,7 +11,7 @@ from .prompts_sar import SAR_SYSTEM_PROMPT, build_sar_prompt
 
 log = logging.getLogger(__name__)
 
-MODEL = os.getenv("ANGELA_AI_MODEL", "gpt-4o-mini")
+MODEL = os.getenv("ANGELA_AI_MODEL", "gpt-5-mini")
 BASE_URL = os.getenv("ANGELA_AI_BASE_URL", "https://api.openai.com/v1")
 MAX_TOKENS = 200
 TIMEOUT = 8.0

@@ -1348,3 +1348,116 @@ body {
   min-width: 30px;
   text-align: right;
 }
+
+/* ===== NLQ Query Bar ===== */
+#nlq-bar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 12;
+  min-width: 420px;
+  max-width: 560px;
+}
+
+#nlq-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#nlq-input {
+  flex: 1;
+  background: rgba(10, 10, 20, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(68, 136, 255, 0.3);
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: #e0e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#nlq-input:focus {
+  border-color: rgba(68, 136, 255, 0.7);
+}
+
+#nlq-input::placeholder {
+  color: #556;
+  font-size: 12px;
+}
+
+#nlq-submit,
+#nlq-clear {
+  background: rgba(68, 136, 255, 0.12);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(68, 136, 255, 0.35);
+  color: #4488ff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+#nlq-submit:hover,
+#nlq-clear:hover {
+  background: rgba(68, 136, 255, 0.25);
+  border-color: rgba(68, 136, 255, 0.6);
+}
+
+#nlq-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+#nlq-clear {
+  background: rgba(255, 136, 68, 0.1);
+  border-color: rgba(255, 136, 68, 0.35);
+  color: #ff8844;
+}
+
+#nlq-clear:hover {
+  background: rgba(255, 136, 68, 0.2);
+  border-color: rgba(255, 136, 68, 0.6);
+}
+
+#nlq-result {
+  background: rgba(10, 10, 20, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(34, 170, 136, 0.3);
+  border-radius: 8px;
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#nlq-interpretation {
+  font-size: 12px;
+  color: #22aa88;
+  font-weight: 600;
+}
+
+#nlq-summary {
+  font-size: 11px;
+  color: #889;
+  font-family: monospace;
+}
+
+#nlq-bar.loading #nlq-submit {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+#nlq-bar.loading #nlq-input {
+  border-color: rgba(34, 170, 136, 0.5);
+}

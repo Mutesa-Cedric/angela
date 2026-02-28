@@ -4,7 +4,7 @@ import { initScene } from "./scene";
 import { NodeLayer, riskColorCSS } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
 import { AssetLayer } from "./graph/AssetLayer";
-import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus, getClusters } from "./api/client";
+import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus, getClusters, queryNLQ } from "./api/client";
 import { ClusterLayer } from "./graph/ClusterLayer";
 import * as wizard from "./ui/wizard";
 import * as slider from "./ui/slider";
@@ -329,6 +329,76 @@ dashboardBtn.addEventListener("click", () => {
   dashboard.toggle(currentSnapshot.meta.t);
 });
 
+// --- NLQ Query Bar ---
+
+const nlqBar = document.getElementById("nlq-bar") as HTMLDivElement;
+const nlqInput = document.getElementById("nlq-input") as HTMLInputElement;
+const nlqSubmit = document.getElementById("nlq-submit") as HTMLButtonElement;
+const nlqClear = document.getElementById("nlq-clear") as HTMLButtonElement;
+const nlqResult = document.getElementById("nlq-result") as HTMLDivElement;
+const nlqInterpretation = document.getElementById("nlq-interpretation") as HTMLSpanElement;
+const nlqSummary = document.getElementById("nlq-summary") as HTMLSpanElement;
+
+async function runNLQ(): Promise<void> {
+  const query = nlqInput.value.trim();
+  if (!query || !currentSnapshot) return;
+
+  nlqBar.classList.add("loading");
+  nlqSubmit.disabled = true;
+
+  try {
+    const result = await queryNLQ(query, currentSnapshot.meta.t);
+
+    // Show interpretation
+    nlqInterpretation.textContent = result.interpretation;
+    nlqSummary.textContent = result.summary;
+    nlqResult.style.display = "flex";
+    nlqClear.style.display = "inline-block";
+
+    // Highlight matching nodes
+    if (result.entity_ids.length > 0) {
+      nodeLayer.highlight(result.entity_ids);
+
+      // Show matching edges
+      const riskScores = new Map<string, number>();
+      for (const node of currentSnapshot.nodes) {
+        riskScores.set(node.id, node.risk_score);
+      }
+      edgeLayer.update(result.edges, nodeLayer, riskScores);
+    } else {
+      nodeLayer.clearHighlight();
+      nlqSummary.textContent = "No matching entities found.";
+    }
+  } catch (err) {
+    nlqInterpretation.textContent = "Query failed";
+    nlqSummary.textContent = err instanceof Error ? err.message : "Unknown error";
+    nlqResult.style.display = "flex";
+  } finally {
+    nlqBar.classList.remove("loading");
+    nlqSubmit.disabled = false;
+  }
+}
+
+function clearNLQ(): void {
+  nodeLayer.clearHighlight();
+  edgeLayer.clear();
+  nlqResult.style.display = "none";
+  nlqClear.style.display = "none";
+  nlqInput.value = "";
+
+  // Restore edges for selected entity if any
+  if (selectedId && currentSnapshot) {
+    loadNeighborEdges(selectedId, currentSnapshot.meta.t, currentK);
+  }
+}
+
+nlqSubmit.addEventListener("click", () => runNLQ());
+nlqInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runNLQ();
+  if (e.key === "Escape") clearNLQ();
+});
+nlqClear.addEventListener("click", clearNLQ);
+
 // --- Per-frame updates ---
 let lastFrameTime = performance.now();
 ctx.onFrame(() => {
@@ -368,6 +438,7 @@ async function startGraph(preloaded?: Snapshot): Promise<void> {
   document.getElementById("camera-presets")!.style.display = "flex";
   document.getElementById("stats-overlay")!.style.display = "flex";
   document.getElementById("action-bar")!.style.display = "flex";
+  document.getElementById("nlq-bar")!.style.display = "flex";
 
   // Connect WebSocket
   wsClient.connect();
@@ -384,6 +455,7 @@ async function init(): Promise<void> {
   document.getElementById("camera-presets")!.style.display = "none";
   document.getElementById("stats-overlay")!.style.display = "none";
   document.getElementById("action-bar")!.style.display = "none";
+  document.getElementById("nlq-bar")!.style.display = "none";
 
   try {
     const status = await getStatus();

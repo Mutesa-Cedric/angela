@@ -12,6 +12,7 @@ from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
 from .config import DATA_PATH
+from .nlq import parse_query, execute_intent
 from .investigation import generate_investigation_targets
 from .csv_processor import process_csv
 from .dashboard import compute_dashboard
@@ -572,3 +573,32 @@ async def get_dashboard(
             detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
         )
     return compute_dashboard(t)
+
+
+# --- Natural Language Query ---
+
+from pydantic import BaseModel
+
+
+class NLQParseRequest(BaseModel):
+    query: str
+    bucket: int
+
+
+@router.post("/nlq/parse")
+async def nlq_parse(req: NLQParseRequest) -> dict:
+    if req.bucket < 0 or req.bucket >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={req.bucket} out of range [0, {store.n_buckets - 1}]",
+        )
+    parsed = parse_query(req.query)
+    result = execute_intent(parsed["intent"], parsed.get("params", {}), req.bucket)
+    return {
+        "intent": parsed["intent"],
+        "params": parsed.get("params", {}),
+        "interpretation": parsed.get("interpretation", ""),
+        "entity_ids": result["entity_ids"],
+        "edges": result["edges"],
+        "summary": result["summary"],
+    }

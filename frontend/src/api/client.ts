@@ -93,3 +93,14 @@ export interface DashboardData {
 export function getDashboard(t: number): Promise<DashboardData> {
   return fetchJSON<DashboardData>(`${BASE}/dashboard?t=${t}`);
 }
+
+export interface ClusterData {
+  cluster_id: string;
+  entity_ids: string[];
+  risk_score: number;
+  size: number;
+}
+
+export function getClusters(t: number): Promise<{ bucket: number; clusters: ClusterData[] }> {
+  return fetchJSON(`${BASE}/clusters?t=${t}`);
+}

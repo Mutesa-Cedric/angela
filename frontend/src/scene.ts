@@ -26,7 +26,8 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x060610);
-  scene.fog = new THREE.FogExp2(0x060610, 0.012);
+  // Subtle exponential fog — separates foreground from background without obvious haze
+  scene.fog = new THREE.FogExp2(0x060610, 0.022);
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -54,21 +55,29 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
   fillLight.position.set(0, 15, 0);
   scene.add(fillLight);
 
-  const rimLight = new THREE.PointLight(0xff6633, 0.2, 40);
+  const rimLight = new THREE.PointLight(0xff6633, 0.25, 50);
   rimLight.position.set(-10, 5, -10);
   scene.add(rimLight);
 
+  // Subtle warm uplight — lifts shadows under the graph
+  const upLight = new THREE.PointLight(0x334466, 0.3, 40);
+  upLight.position.set(0, -5, 0);
+  scene.add(upLight);
+
   // Ground grid for spatial reference
-  const grid = new THREE.GridHelper(40, 40, 0x222233, 0x111122);
+  const grid = new THREE.GridHelper(50, 50, 0x181828, 0x0d0d18);
   grid.position.y = -0.1;
   scene.add(grid);
 
   // Post-processing: bloom
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
+  // Selective bloom: high threshold ensures only glow sprites and emissive surfaces bloom
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.8, 0.4, 0.6,
+    0.5,  // strength — subtle, cinematic
+    0.6,  // radius — wide soft falloff
+    0.85, // threshold — only the brightest surfaces bloom
   );
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());

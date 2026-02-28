@@ -4,13 +4,13 @@ import { initScene } from "./scene";
 import { NodeLayer, riskColorCSS } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
 import { AssetLayer } from "./graph/AssetLayer";
-import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus } from "./api/client";
+import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus, getClusters } from "./api/client";
+import { ClusterLayer } from "./graph/ClusterLayer";
 import * as wizard from "./ui/wizard";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
 import * as camera from "./ui/camera";
 import * as stats from "./ui/stats";
-import * as demo from "./ui/demo";
 import { addAxisLabels } from "./ui/axisLabels";
 import { wsClient } from "./api/ws";
 import { Autopilot } from "./camera/Autopilot";
@@ -24,6 +24,7 @@ const ctx = initScene(canvas);
 const nodeLayer = new NodeLayer(5000);
 ctx.scene.add(nodeLayer.group);
 const edgeLayer = new EdgeLayer(ctx.scene);
+const clusterLayer = new ClusterLayer(ctx.scene, ctx.camera);
 const assetLayer = new AssetLayer(ctx.scene);
 
 // Init wizard with scene + nodeLayer deps
@@ -60,8 +61,14 @@ async function loadBucket(t: number): Promise<void> {
     currentSnapshot = await getSnapshot(t);
     nodeLayer.update(currentSnapshot.nodes);
     edgeLayer.clear();
+    clusterLayer.clear();
     assetLayer.clear();
     panel.setBucket(t);
+
+    // Load clusters asynchronously
+    getClusters(t)
+      .then(({ clusters }) => clusterLayer.update(clusters, nodeLayer))
+      .catch(() => {/* clusters optional */});
 
     stats.updateCounts(currentSnapshot.nodes.length, currentSnapshot.edges.length);
 
@@ -330,18 +337,11 @@ ctx.onFrame(() => {
   lastFrameTime = now;
 
   nodeLayer.animate(dt);
+  clusterLayer.animate();
   autopilot.tick(dt);
   assetLayer.animate();
   edgeLayer.animate(dt);
   stats.tick();
-});
-
-// --- Demo autoplay ---
-demo.init({
-  loadBucket,
-  selectEntity,
-  overview: () => camera.overview(ctx),
-  focusEntity: (id) => camera.focusEntity(ctx, nodeLayer, id),
 });
 
 // --- Re-upload button ---
@@ -367,9 +367,7 @@ async function startGraph(preloaded?: Snapshot): Promise<void> {
   document.getElementById("legend")!.style.display = "block";
   document.getElementById("camera-presets")!.style.display = "flex";
   document.getElementById("stats-overlay")!.style.display = "flex";
-  document.getElementById("demo-btn")!.style.display = "block";
-  document.getElementById("autopilot-btn")!.style.display = "block";
-  document.getElementById("dashboard-btn")!.style.display = "block";
+  document.getElementById("action-bar")!.style.display = "flex";
 
   // Connect WebSocket
   wsClient.connect();
@@ -385,9 +383,7 @@ async function init(): Promise<void> {
   document.getElementById("legend")!.style.display = "none";
   document.getElementById("camera-presets")!.style.display = "none";
   document.getElementById("stats-overlay")!.style.display = "none";
-  document.getElementById("demo-btn")!.style.display = "none";
-  document.getElementById("autopilot-btn")!.style.display = "none";
-  document.getElementById("dashboard-btn")!.style.display = "none";
+  document.getElementById("action-bar")!.style.display = "none";
 
   try {
     const status = await getStatus();
@@ -410,6 +406,7 @@ if (import.meta.env.DEV) {
     ctx,
     nodeLayer,
     edgeLayer,
+    clusterLayer,
     assetLayer,
   };
 }

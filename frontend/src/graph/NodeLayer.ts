@@ -17,8 +17,16 @@ const MIN_RADIUS = 0.10;
 const MAX_RADIUS = 0.55;
 
 /** Risk glow thresholds. */
-const GLOW_RISK_MIN = 0.35;
-const GLOW_RISK_FULL = 0.75;
+const GLOW_RISK_MIN = 0.25;
+const GLOW_RISK_FULL = 0.65;
+
+/** De-emphasis: low-risk nodes get dimmed. */
+const DEEMPH_RISK_THRESHOLD = 0.15;
+const DEEMPH_BRIGHTNESS = 0.35; // multiplier for low-risk node color
+
+/** Risk pulse period (seconds) for high-risk emissive cycle. */
+const PULSE_PERIOD = 3.0;
+const PULSE_AMPLITUDE = 0.25;
 
 /** Jurisdiction → color palette (8 slots). */
 const JURISDICTION_COLORS: number[] = [
@@ -195,6 +203,16 @@ export class NodeLayer {
         .copy(jColor)
         .lerp(riskColor(riskT), Math.min(riskT * 1.5, 0.8));
 
+      // B) De-emphasize low-risk nodes — dim color, lower visual weight
+      if (riskT < DEEMPH_RISK_THRESHOLD) {
+        finalColor.multiplyScalar(DEEMPH_BRIGHTNESS);
+      } else if (riskT < 0.3) {
+        // Gradual ramp from dimmed to full brightness
+        const t = (riskT - DEEMPH_RISK_THRESHOLD) / (0.3 - DEEMPH_RISK_THRESHOLD);
+        const brightness = DEEMPH_BRIGHTNESS + (1 - DEEMPH_BRIGHTNESS) * t;
+        finalColor.multiplyScalar(brightness);
+      }
+
       const emissive =
         riskT >= GLOW_RISK_FULL
           ? 1.0
@@ -269,30 +287,55 @@ export class NodeLayer {
   // ── Per-frame animation tick ─────────────────────────────────────
 
   animate(dt: number): void {
-    if (!this.needsTransition) return;
+    const time = performance.now() * 0.001;
 
-    const alpha = Math.min(dt / TRANSITION_DURATION, 1);
-    let allDone = true;
+    // Always animate glow + pulse even when position transitions are done
+    const transitioning = this.needsTransition;
 
-    const count = Math.min(this.nodes.length, this.maxCount);
-    for (let i = 0; i < count; i++) {
-      const s = this.states[i];
-      s.px += (s.tx - s.px) * alpha * 3;
-      s.py += (s.ty - s.py) * alpha * 3;
-      s.pz += (s.tz - s.pz) * alpha * 3;
-      s.scale += (s.tScale - s.scale) * alpha * 3;
-      s.r += (s.tr - s.r) * alpha * 3;
-      s.g += (s.tg - s.g) * alpha * 3;
-      s.b += (s.tb - s.b) * alpha * 3;
-      s.emissive += (s.tEmissive - s.emissive) * alpha * 3;
+    if (transitioning) {
+      const alpha = Math.min(dt / TRANSITION_DURATION, 1);
+      let allDone = true;
 
-      if (
-        Math.abs(s.tx - s.px) > 0.001 ||
-        Math.abs(s.ty - s.py) > 0.001 ||
-        Math.abs(s.tz - s.pz) > 0.001 ||
-        Math.abs(s.tScale - s.scale) > 0.001
-      ) {
-        allDone = false;
+      const count = Math.min(this.nodes.length, this.maxCount);
+      for (let i = 0; i < count; i++) {
+        const s = this.states[i];
+        s.px += (s.tx - s.px) * alpha * 3;
+        s.py += (s.ty - s.py) * alpha * 3;
+        s.pz += (s.tz - s.pz) * alpha * 3;
+        s.scale += (s.tScale - s.scale) * alpha * 3;
+        s.r += (s.tr - s.r) * alpha * 3;
+        s.g += (s.tg - s.g) * alpha * 3;
+        s.b += (s.tb - s.b) * alpha * 3;
+        s.emissive += (s.tEmissive - s.emissive) * alpha * 3;
+
+        if (
+          Math.abs(s.tx - s.px) > 0.001 ||
+          Math.abs(s.ty - s.py) > 0.001 ||
+          Math.abs(s.tz - s.pz) > 0.001 ||
+          Math.abs(s.tScale - s.scale) > 0.001
+        ) {
+          allDone = false;
+        }
+      }
+
+      if (allDone) this.needsTransition = false;
+    }
+
+    // C) Subtle ambient emissive pulse — very low intensity since it's shared across all instances
+    for (const sm of this.meshes.values()) {
+      const mat = sm.mesh.material as THREE.MeshStandardMaterial;
+      let maxEmissive = 0;
+      for (const [global] of sm.globalToLocal) {
+        const s = this.states[global];
+        if (s && s.emissive > maxEmissive) maxEmissive = s.emissive;
+      }
+      if (maxEmissive > 0) {
+        const pulse = 1 + Math.sin(time * (Math.PI * 2 / PULSE_PERIOD)) * PULSE_AMPLITUDE;
+        // Very subtle — just enough to make the mesh "breathe" without washing out
+        mat.emissiveIntensity = 0.08 * pulse;
+        mat.emissive.set(0xff6633);
+      } else {
+        mat.emissiveIntensity = 0;
       }
     }
 
@@ -307,14 +350,13 @@ export class NodeLayer {
 
     // Animate glow sprites
     this.animateGlowSprites();
-
-    if (allDone) this.needsTransition = false;
   }
 
   // ── Glow sprites ────────────────────────────────────────────────
 
+  // D) Softer, wider halo texture with gentle falloff
   private createGlowTexture(): THREE.Texture {
-    const size = 64;
+    const size = 128;
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
@@ -323,9 +365,12 @@ export class NodeLayer {
       size / 2, size / 2, 0,
       size / 2, size / 2, size / 2,
     );
-    gradient.addColorStop(0, "rgba(255,255,255,0.6)");
-    gradient.addColorStop(0.4, "rgba(255,100,50,0.2)");
-    gradient.addColorStop(1, "rgba(255,50,30,0.0)");
+    // Softer center, wider falloff, no harsh edges
+    gradient.addColorStop(0, "rgba(255,200,150,0.45)");
+    gradient.addColorStop(0.15, "rgba(255,140,80,0.30)");
+    gradient.addColorStop(0.4, "rgba(255,80,40,0.12)");
+    gradient.addColorStop(0.7, "rgba(255,40,20,0.04)");
+    gradient.addColorStop(1, "rgba(255,30,15,0.0)");
     c.fillStyle = gradient;
     c.fillRect(0, 0, size, size);
     const tex = new THREE.CanvasTexture(canvas);
@@ -346,17 +391,22 @@ export class NodeLayer {
       const s = this.states[i];
       if (s.tEmissive <= 0) continue;
 
+      // D) Softer halo — warm tones blended with node color, lower opacity
+      const glowColor = new THREE.Color().setRGB(s.tr, s.tg, s.tb);
+      glowColor.lerp(new THREE.Color(0xff6633), 0.5); // warm risk tint
+
       const mat = new THREE.SpriteMaterial({
         map: this.glowMap,
-        color: new THREE.Color().setRGB(s.tr, s.tg, s.tb),
+        color: glowColor,
         transparent: true,
-        opacity: s.tEmissive * 0.6,
+        opacity: s.tEmissive * 0.45,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
 
       const sprite = new THREE.Sprite(mat);
-      const glowScale = s.tScale * (2.5 + s.tEmissive * 2);
+      // Wider halo for premium feel
+      const glowScale = s.tScale * (3.0 + s.tEmissive * 2.5);
       sprite.scale.setScalar(glowScale);
       sprite.position.set(s.px, s.py, s.pz);
       (sprite as unknown as Record<string, number>).__globalIdx = i;
@@ -374,13 +424,15 @@ export class NodeLayer {
       if (!s) continue;
       sprite.position.set(s.px, s.py, s.pz);
 
-      // Pulse for high-risk nodes
-      const pulse = 1 + Math.sin(time * 2.5 + gi * 0.7) * 0.15 * s.emissive;
-      const glowScale = s.scale * (2.5 + s.emissive * 2) * pulse;
+      // Smooth breathing pulse — slower, more organic
+      const phase = time * (Math.PI * 2 / PULSE_PERIOD) + gi * 0.9;
+      const pulse = 1 + Math.sin(phase) * 0.12 * s.emissive;
+      const glowScale = s.scale * (3.0 + s.emissive * 2.5) * pulse;
       sprite.scale.setScalar(glowScale);
 
+      // Gentle opacity breathing
       const mat = sprite.material as THREE.SpriteMaterial;
-      mat.opacity = s.emissive * 0.5 * (0.85 + Math.sin(time * 3 + gi) * 0.15);
+      mat.opacity = s.emissive * 0.4 * (0.88 + Math.sin(phase * 0.7) * 0.12);
     }
   }
 
@@ -427,5 +479,17 @@ export class NodeLayer {
     const s = this.states[idx];
     if (!s) return null;
     return new THREE.Vector3(s.px, s.py, s.pz);
+  }
+
+  /** Get risk score for an entity (for cluster visualization). */
+  getRiskScore(entityId: string): number {
+    const idx = this.idToGlobal.get(entityId);
+    if (idx === undefined) return 0;
+    return this.nodes[idx]?.risk_score ?? 0;
+  }
+
+  /** Get current snapshot nodes. */
+  getNodes(): SnapshotNode[] {
+    return this.nodes;
   }
 }

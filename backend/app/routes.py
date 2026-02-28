@@ -480,6 +480,25 @@ async def get_autopilot_targets(
     return {"bucket": t, "targets": targets}
 
 
+# --- Clusters ---
+
+@router.get("/clusters")
+async def get_clusters(
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+    risk_data = store.risk_by_bucket.get(t, {})
+    bucket_key = str(t)
+    tx_indices = store.bucket_index.get(bucket_key, [])
+    bucket_tx = [store.transactions[i] for i in tx_indices if i < len(store.transactions)]
+    clusters = detect_clusters(risk_data, bucket_tx, threshold=0.3)
+    return {"bucket": t, "clusters": clusters}
+
+
 # --- SAR Narrative ---
 
 @router.post("/ai/sar/entity/{entity_id}")

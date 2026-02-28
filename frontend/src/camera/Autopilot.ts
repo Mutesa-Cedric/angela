@@ -182,48 +182,64 @@ export class Autopilot {
     this.ctx.controls.target.lerpVectors(this.startLookAt, kf.lookAt, e);
     this.ctx.controls.update();
 
-    // Show annotation at 20% progress
-    if (kf.annotation && this.keyframeProgress > 0.15 && this.keyframeProgress < 0.85) {
+    // Show annotation after camera settles (25% in), hold until 90%
+    if (kf.annotation && this.keyframeProgress > 0.25 && this.keyframeProgress < 0.9) {
       showOverlay(kf.annotation);
+    } else if (this.keyframeProgress >= 0.9) {
+      hideOverlay();
     }
   }
 
-  // ── Keyframe planning ────────────────────────────────────────────
+  // ── Keyframe planning (cinematic) ───────────────────────────────
 
   private planKeyframes(targets: AutopilotTarget[]): CameraKeyframe[] {
     const keyframes: CameraKeyframe[] = [];
 
-    // 1. Overview establishing shot
+    // Find highest-risk target for dramatic emphasis
+    const maxRisk = Math.max(...targets.map((t) => t.risk_score), 0);
+
+    // 1. Cinematic establishing shot — slow dramatic sweep
     keyframes.push({
-      position: new THREE.Vector3(18, 14, 18),
+      position: new THREE.Vector3(22, 16, 22),
       lookAt: new THREE.Vector3(0, 2, 0),
-      duration: 2.5,
+      duration: 3.5,
       easing: "ease-in-out",
-      annotation: "Overview — scanning network for anomalies",
+      annotation: "Scanning network for anomalies…",
     });
 
-    // 2. Visit each target
+    // 2. Visit each target with settle + hold pattern
     for (const target of targets) {
+      // Higher-risk targets get longer hold times
+      const riskMultiplier = target.risk_score >= maxRisk * 0.9 ? 1.4 : 1.0;
+
       if (target.type === "entity") {
         const pos = this.nodeLayer.getPosition(target.entity_ids[0]);
         if (!pos) continue;
 
-        // Approach shot
+        // Approach — ease in from wider angle
         keyframes.push({
-          position: new THREE.Vector3(pos.x + 5, pos.y + 3, pos.z + 5),
+          position: new THREE.Vector3(pos.x + 6, pos.y + 4, pos.z + 6),
           lookAt: new THREE.Vector3(pos.x, pos.y, pos.z),
-          duration: 2.0,
+          duration: 2.5 * riskMultiplier,
           easing: "ease-in-out",
           annotation: target.label,
         });
 
-        // Close orbit
+        // Settle — close orbit, hold for annotation to land
         keyframes.push({
-          position: new THREE.Vector3(pos.x + 2.5, pos.y + 1.5, pos.z - 2),
+          position: new THREE.Vector3(pos.x + 2.5, pos.y + 1.5, pos.z - 2.5),
           lookAt: new THREE.Vector3(pos.x, pos.y, pos.z),
-          duration: 2.5,
+          duration: 2.0 * riskMultiplier,
           easing: "ease-out",
           annotation: target.reason,
+        });
+
+        // Hold — very slight drift (barely perceptible camera movement)
+        keyframes.push({
+          position: new THREE.Vector3(pos.x + 2.3, pos.y + 1.6, pos.z - 2.3),
+          lookAt: new THREE.Vector3(pos.x, pos.y, pos.z),
+          duration: 1.8 * riskMultiplier,
+          easing: "linear",
         });
       } else if (target.type === "cluster") {
         // Compute cluster centroid
@@ -239,40 +255,52 @@ export class Autopilot {
         if (count === 0) continue;
         centroid.divideScalar(count);
 
-        // Wide view of cluster
+        // Wider approach for clusters
         const radius = Math.max(count * 0.5, 4);
         keyframes.push({
           position: new THREE.Vector3(
-            centroid.x + radius,
-            centroid.y + radius * 0.7,
-            centroid.z + radius,
+            centroid.x + radius * 1.2,
+            centroid.y + radius * 0.8,
+            centroid.z + radius * 1.2,
           ),
           lookAt: centroid.clone(),
-          duration: 3.0,
+          duration: 3.5 * riskMultiplier,
           easing: "ease-in-out",
           annotation: target.label,
         });
 
-        // Sweep around cluster
+        // Slow cinematic sweep around cluster
         keyframes.push({
           position: new THREE.Vector3(
-            centroid.x - radius * 0.8,
-            centroid.y + radius * 0.4,
-            centroid.z + radius * 0.6,
+            centroid.x - radius * 0.9,
+            centroid.y + radius * 0.5,
+            centroid.z + radius * 0.7,
           ),
           lookAt: centroid.clone(),
-          duration: 3.0,
+          duration: 3.5 * riskMultiplier,
           easing: "ease-out",
           annotation: target.reason,
+        });
+
+        // Hold on cluster
+        keyframes.push({
+          position: new THREE.Vector3(
+            centroid.x - radius * 0.85,
+            centroid.y + radius * 0.55,
+            centroid.z + radius * 0.65,
+          ),
+          lookAt: centroid.clone(),
+          duration: 2.0,
+          easing: "linear",
         });
       }
     }
 
-    // 3. Return to overview
+    // 3. Graceful return to overview
     keyframes.push({
-      position: new THREE.Vector3(15, 12, 15),
+      position: new THREE.Vector3(18, 14, 18),
       lookAt: new THREE.Vector3(0, 2, 0),
-      duration: 2.5,
+      duration: 3.0,
       easing: "ease-in-out",
       annotation: "Investigation complete",
     });

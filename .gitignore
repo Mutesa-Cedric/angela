@@ -5,10 +5,6 @@ docs/
 .env
 .env.*
 
-# Env (never commit secrets)
-.env
-.env.*
-
 # Data & Assets (never commit)
 data/raw/
 backend/assets/

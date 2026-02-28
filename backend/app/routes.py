@@ -15,7 +15,7 @@ from .config import DATA_PATH
 from .counterfactual import compute_counterfactual
 from .nlq import parse_query, execute_intent
 from .investigation import generate_investigation_targets
-from .csv_processor import process_csv
+from .csv_processor import process_csv, process_csv_mapped, preview_csv
 from .dashboard import compute_dashboard
 from .data_loader import store
 from .models import (
@@ -67,6 +67,57 @@ async def upload_file(file: UploadFile) -> dict:
             snapshot = process_csv(contents, filename=file.filename)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
+    store.load_from_dict(snapshot)
+
+    return {
+        "status": "ok",
+        "n_entities": len(store.entities),
+        "n_transactions": len(store.transactions),
+        "n_buckets": store.n_buckets,
+    }
+
+
+@router.post("/upload/preview")
+async def upload_preview(file: UploadFile) -> dict:
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Preview only supports CSV files")
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+
+    try:
+        return preview_csv(contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/upload/mapped")
+async def upload_mapped(file: UploadFile, mapping: str = Query(..., description="JSON column mapping")) -> dict:
+    import json as _json
+
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Mapped upload only supports CSV files")
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+
+    try:
+        col_mapping = _json.loads(mapping)
+    except _json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid mapping JSON")
+
+    if not isinstance(col_mapping, dict):
+        raise HTTPException(status_code=400, detail="Mapping must be a JSON object")
+
+    try:
+        snapshot = process_csv_mapped(contents, col_mapping, filename=file.filename or "upload.csv")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     store.load_from_dict(snapshot)
 

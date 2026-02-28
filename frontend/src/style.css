@@ -923,6 +923,147 @@ body {
   cursor: not-allowed;
 }
 
+/* Schema mapping */
+.mapping-title {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #4488ff;
+  margin-bottom: 4px;
+}
+
+.mapping-subtitle {
+  font-size: 12px;
+  color: #668;
+  margin-bottom: 16px;
+}
+
+.mapping-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mapping-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #889;
+  min-width: 80px;
+  text-align: right;
+}
+
+.mapping-label.req::after {
+  content: " *";
+  color: #ff6666;
+}
+
+.mapping-select {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23668'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.mapping-select:focus {
+  outline: none;
+  border-color: rgba(68, 136, 255, 0.5);
+}
+
+.mapping-select.matched {
+  border-color: rgba(34, 170, 136, 0.4);
+}
+
+.mapping-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  color: #445;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.mapping-divider::before,
+.mapping-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mapping-preview {
+  margin-top: 12px;
+  max-height: 100px;
+  overflow: auto;
+  font-size: 10px;
+  color: #667;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 6px;
+  display: none;
+}
+
+.mapping-preview table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.mapping-preview th {
+  font-weight: 600;
+  color: #99a;
+  text-align: left;
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mapping-preview td {
+  padding: 2px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.mapping-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mapping-actions .wizard-btn {
+  width: auto;
+  flex: 1;
+}
+
+.mapping-actions .wizard-btn.secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #889;
+}
+
+.mapping-actions .wizard-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* Boot sequence */
 .seq-phase {
   font-family: "SF Mono", "Fira Code", monospace;

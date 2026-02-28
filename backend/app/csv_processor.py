@@ -45,6 +45,54 @@ def jurisdiction_bucket(entity_id: str, seed: int) -> int:
     return int(h, 16) % N_JURISDICTIONS
 
 
+SMART_MATCH: dict[str, list[str]] = {
+    "from_id": ["from account", "from_account", "from_id", "sender", "source", "originator", "from acct", "sender_id"],
+    "to_id": ["to account", "to_account", "to_id", "receiver", "destination", "beneficiary", "to acct", "receiver_id"],
+    "amount": ["amount", "value", "sum", "amt", "amount received", "amount paid"],
+    "timestamp": ["timestamp", "date", "datetime", "time", "transaction_date", "tx_date", "created_at"],
+    "from_bank": ["from bank", "from_bank", "sender_bank", "source_bank", "originator_bank"],
+    "to_bank": ["to bank", "to_bank", "receiver_bank", "dest_bank", "beneficiary_bank"],
+    "label": ["is laundering", "is_laundering", "label", "suspicious", "fraud", "is_fraud"],
+    "currency": ["currency", "ccy", "cur"],
+    "payment_format": ["payment format", "payment_format", "payment_type", "type", "method"],
+}
+
+
+def preview_csv(file_bytes: bytes, max_rows: int = 5) -> dict:
+    """Read CSV header + sample rows and suggest column mappings."""
+    text = file_bytes.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+
+    try:
+        header = next(reader)
+    except StopIteration:
+        raise ValueError("CSV file is empty")
+
+    columns = [h.strip() for h in header]
+    rows: list[list[str]] = []
+    for i, cols in enumerate(reader):
+        if i >= max_rows:
+            break
+        rows.append([c.strip() for c in cols])
+
+    # Smart-match: for each target field, find best matching column
+    suggested: dict[str, str | None] = {}
+    for field, patterns in SMART_MATCH.items():
+        match = None
+        for col in columns:
+            if col.strip().lower() in patterns:
+                match = col
+                break
+        suggested[field] = match
+
+    return {
+        "columns": columns,
+        "sample_rows": rows,
+        "suggested_mapping": suggested,
+        "row_count": len(rows),
+    }
+
+
 def _detect_format(header: list[str]) -> str:
     """Detect CSV format from header row."""
     normalized = {h.strip().lower() for h in header}
@@ -278,6 +326,111 @@ def process_csv(file_bytes: bytes, filename: str = "upload.csv") -> dict:
 
     return {
         "metadata": metadata,
+        "entities": entities,
+        "transactions": transactions,
+        "bucket_index": bucket_index,
+        "entity_activity": entity_activity,
+    }
+
+
+def process_csv_mapped(
+    file_bytes: bytes,
+    mapping: dict[str, str],
+    filename: str = "upload.csv",
+) -> dict:
+    """Process CSV using explicit column mapping from the schema mapping step.
+
+    mapping keys: from_id, to_id, amount, timestamp (required)
+                  from_bank, to_bank, label, currency, payment_format (optional)
+    mapping values: actual CSV column names
+    """
+    required = {"from_id", "to_id", "amount", "timestamp"}
+    missing = required - set(mapping.keys())
+    if missing:
+        raise ValueError(f"Missing required mappings: {', '.join(sorted(missing))}")
+
+    text = file_bytes.decode("utf-8", errors="replace")
+    dict_reader = csv.DictReader(io.StringIO(text))
+
+    transactions: list[dict] = []
+    skipped = 0
+
+    for i, row in enumerate(dict_reader):
+        try:
+            from_id_val = row[mapping["from_id"]].strip()
+            to_id_val = row[mapping["to_id"]].strip()
+            amount_str = row[mapping["amount"]].strip()
+            ts_str = row[mapping["timestamp"]].strip()
+
+            if not all([from_id_val, to_id_val, amount_str, ts_str]):
+                skipped += 1
+                continue
+
+            timestamp = parse_timestamp(ts_str)
+            if timestamp is None:
+                skipped += 1
+                continue
+
+            amount = float(amount_str)
+
+            # Build entity IDs: use bank prefix if mapped, otherwise raw ID
+            from_bank = row.get(mapping.get("from_bank", ""), "").strip() if "from_bank" in mapping else ""
+            to_bank = row.get(mapping.get("to_bank", ""), "").strip() if "to_bank" in mapping else ""
+
+            from_id = make_entity_id(from_bank, from_id_val) if from_bank else from_id_val
+            to_id = make_entity_id(to_bank, to_id_val) if to_bank else to_id_val
+
+            is_laundering = 0
+            if "label" in mapping and mapping["label"] in row:
+                try:
+                    is_laundering = int(float(row[mapping["label"]].strip()))
+                except ValueError:
+                    pass
+
+            currency = "USD"
+            if "currency" in mapping and mapping["currency"] in row:
+                currency = row[mapping["currency"]].strip() or "USD"
+
+            pay_fmt = ""
+            if "payment_format" in mapping and mapping["payment_format"] in row:
+                pay_fmt = row[mapping["payment_format"]].strip()
+
+            transactions.append({
+                "tx_id": f"tx_{i:06d}",
+                "from_id": from_id,
+                "to_id": to_id,
+                "amount": round(amount, 2),
+                "currency": currency,
+                "timestamp": timestamp,
+                "payment_format": pay_fmt,
+                "is_laundering": is_laundering,
+            })
+        except (KeyError, ValueError):
+            skipped += 1
+
+    if not transactions:
+        raise ValueError(f"No valid transactions found ({skipped} rows skipped)")
+
+    transactions.sort(key=lambda t: t["timestamp"])
+    for idx, tx in enumerate(transactions):
+        tx["tx_id"] = f"tx_{idx:06d}"
+
+    log.info(f"Mapped CSV: {len(transactions)} transactions ({skipped} skipped)")
+
+    entities = _build_entities(transactions, SEED)
+    t0, n_buckets, bucket_index, entity_activity = _apply_buckets(transactions, BUCKET_SIZE_SECONDS)
+
+    return {
+        "metadata": {
+            "seed": SEED,
+            "source_file": filename,
+            "n_entities": len(entities),
+            "n_transactions": len(transactions),
+            "n_buckets": n_buckets,
+            "bucket_size_seconds": BUCKET_SIZE_SECONDS,
+            "t0": t0,
+            "sample_type": "upload",
+        },
         "entities": entities,
         "transactions": transactions,
         "bucket_index": bucket_index,

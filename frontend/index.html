@@ -25,6 +25,56 @@
         <button id="load-sample-btn" class="wizard-btn">Load Sample Data</button>
       </div>
 
+      <!-- Step: Schema Mapping -->
+      <div id="wizard-mapping" class="wizard-step" style="display:none">
+        <div class="wizard-brand small">ANGELA</div>
+        <div class="mapping-title">Map Your Columns</div>
+        <div class="mapping-subtitle">Tell ANGELA which columns contain transaction data</div>
+        <div id="mapping-fields" class="mapping-fields">
+          <!-- Required -->
+          <div class="mapping-row">
+            <label class="mapping-label req">From ID</label>
+            <select id="map-from_id" class="mapping-select"><option value="">-- select --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label req">To ID</label>
+            <select id="map-to_id" class="mapping-select"><option value="">-- select --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label req">Amount</label>
+            <select id="map-amount" class="mapping-select"><option value="">-- select --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label req">Timestamp</label>
+            <select id="map-timestamp" class="mapping-select"><option value="">-- select --</option></select>
+          </div>
+          <!-- Optional -->
+          <div class="mapping-divider"><span>optional</span></div>
+          <div class="mapping-row">
+            <label class="mapping-label">From Bank</label>
+            <select id="map-from_bank" class="mapping-select"><option value="">-- skip --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">To Bank</label>
+            <select id="map-to_bank" class="mapping-select"><option value="">-- skip --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">Label</label>
+            <select id="map-label" class="mapping-select"><option value="">-- skip --</option></select>
+          </div>
+          <div class="mapping-row">
+            <label class="mapping-label">Currency</label>
+            <select id="map-currency" class="mapping-select"><option value="">-- skip --</option></select>
+          </div>
+        </div>
+        <div id="mapping-preview" class="mapping-preview"></div>
+        <div id="mapping-error" class="wizard-error"></div>
+        <div class="mapping-actions">
+          <button id="mapping-back" class="wizard-btn secondary">Back</button>
+          <button id="mapping-confirm" class="wizard-btn">Confirm &amp; Import</button>
+        </div>
+      </div>
+
       <!-- Step: Boot sequence -->
       <div id="wizard-sequence" class="wizard-step" style="display:none">
         <div class="wizard-brand small">ANGELA</div>

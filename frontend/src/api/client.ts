@@ -45,6 +45,38 @@ export async function uploadFile(file: File): Promise<{ status: string; n_entiti
   return res.json();
 }
 
+export interface CSVPreview {
+  columns: string[];
+  sample_rows: string[][];
+  suggested_mapping: Record<string, string | null>;
+  row_count: number;
+}
+
+export async function previewCSV(file: File): Promise<CSVPreview> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/upload/preview`, { method: "POST", body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Preview failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function uploadMapped(file: File, mapping: Record<string, string>): Promise<{ status: string; n_entities: number; n_transactions: number; n_buckets: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/upload/mapped?mapping=${encodeURIComponent(JSON.stringify(mapping))}`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Upload failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function loadSample(): Promise<{ status: string; n_entities: number; n_transactions: number; n_buckets: number }> {
   const res = await fetch(`${BASE}/load-sample`, { method: "POST" });
   if (!res.ok) {

@@ -1,4 +1,5 @@
-import { uploadFile, loadSample, getSnapshot } from "../api/client";
+import { uploadFile, uploadMapped, previewCSV, loadSample, getSnapshot } from "../api/client";
+import type { CSVPreview } from "../api/client";
 import { computePositions } from "../layout";
 import { WizardParticles } from "./wizardParticles";
 import type { SceneContext } from "../scene";
@@ -9,17 +10,30 @@ import type { Snapshot } from "../types";
 const backdrop = document.getElementById("wizard-backdrop") as HTMLDivElement;
 const card = document.getElementById("wizard-card") as HTMLDivElement;
 const uploadStep = document.getElementById("wizard-upload") as HTMLDivElement;
+const mappingStep = document.getElementById("wizard-mapping") as HTMLDivElement;
 const sequenceStep = document.getElementById("wizard-sequence") as HTMLDivElement;
 const readyStep = document.getElementById("wizard-ready") as HTMLDivElement;
 const dropzone = document.getElementById("upload-dropzone") as HTMLDivElement;
 const fileInput = document.getElementById("upload-file") as HTMLInputElement;
 const sampleBtn = document.getElementById("load-sample-btn") as HTMLButtonElement;
 const errorEl = document.getElementById("upload-error") as HTMLDivElement;
+const mappingError = document.getElementById("mapping-error") as HTMLDivElement;
+const mappingPreview = document.getElementById("mapping-preview") as HTMLDivElement;
+const mappingBack = document.getElementById("mapping-back") as HTMLButtonElement;
+const mappingConfirm = document.getElementById("mapping-confirm") as HTMLButtonElement;
 const seqPhase = document.getElementById("seq-phase") as HTMLDivElement;
 const seqSubtitle = document.getElementById("seq-subtitle") as HTMLDivElement;
 const seqProgressBar = document.getElementById("seq-progress-bar") as HTMLDivElement;
 const seqCounter = document.getElementById("seq-counter") as HTMLDivElement;
 const seqDots = document.querySelectorAll("#seq-steps .seq-dot");
+
+// Mapping select elements
+const MAPPING_FIELDS = ["from_id", "to_id", "amount", "timestamp", "from_bank", "to_bank", "label", "currency"] as const;
+const REQUIRED_FIELDS = new Set(["from_id", "to_id", "amount", "timestamp"]);
+const mapSelects: Record<string, HTMLSelectElement> = {};
+for (const f of MAPPING_FIELDS) {
+  mapSelects[f] = document.getElementById(`map-${f}`) as HTMLSelectElement;
+}
 
 // --- State ---
 interface UploadMeta {
@@ -36,6 +50,7 @@ interface WizardDeps {
 let deps: WizardDeps | null = null;
 let onLoadedCallback: ((snapshot: Snapshot) => void) | null = null;
 let particles: WizardParticles | null = null;
+let pendingFile: File | null = null;
 
 // --- Public API ---
 
@@ -44,15 +59,16 @@ export function init(d: WizardDeps): void {
 }
 
 export function show(): void {
-  // Reset to upload form
   backdrop.classList.remove("hidden", "step-0", "step-1", "step-2", "step-3", "step-4", "reveal");
   card.classList.remove("hidden", "sequencing", "reveal");
   uploadStep.style.display = "";
+  mappingStep.style.display = "none";
   sequenceStep.style.display = "none";
   readyStep.style.display = "none";
   clearError();
   sampleBtn.disabled = false;
   dropzone.style.pointerEvents = "auto";
+  pendingFile = null;
 }
 
 export function hide(): void {
@@ -99,6 +115,35 @@ sampleBtn.addEventListener("click", () => {
   startUpload(loadSample());
 });
 
+// --- Mapping step events ---
+
+mappingBack.addEventListener("click", () => {
+  mappingStep.style.display = "none";
+  uploadStep.style.display = "";
+  setFormDisabled(false);
+  pendingFile = null;
+});
+
+mappingConfirm.addEventListener("click", () => {
+  if (!pendingFile) return;
+
+  // Validate required fields
+  const mapping: Record<string, string> = {};
+  for (const f of MAPPING_FIELDS) {
+    const val = mapSelects[f].value;
+    if (REQUIRED_FIELDS.has(f) && !val) {
+      mappingError.textContent = `"${f.replace("_", " ")}" is required`;
+      mappingError.style.display = "block";
+      return;
+    }
+    if (val) mapping[f] = val;
+  }
+
+  mappingError.style.display = "none";
+  mappingStep.style.display = "none";
+  startUpload(uploadMapped(pendingFile, mapping));
+});
+
 // --- File handling ---
 
 async function handleFile(file: File): Promise<void> {
@@ -109,7 +154,75 @@ async function handleFile(file: File): Promise<void> {
   }
   clearError();
   setFormDisabled(true);
-  startUpload(uploadFile(file));
+
+  // JSON files skip mapping, go straight to upload
+  if (ext.endsWith(".json")) {
+    startUpload(uploadFile(file));
+    return;
+  }
+
+  // CSV files: preview + schema mapping
+  try {
+    const preview = await previewCSV(file);
+    pendingFile = file;
+    showMappingStep(preview);
+  } catch (err) {
+    setFormDisabled(false);
+    showError(err instanceof Error ? err.message : "Preview failed");
+  }
+}
+
+function showMappingStep(preview: CSVPreview): void {
+  uploadStep.style.display = "none";
+  mappingStep.style.display = "";
+  mappingError.style.display = "none";
+
+  // Populate selects with detected columns
+  for (const f of MAPPING_FIELDS) {
+    const sel = mapSelects[f];
+    const isRequired = REQUIRED_FIELDS.has(f);
+    sel.innerHTML = `<option value="">${isRequired ? "-- select --" : "-- skip --"}</option>`;
+    for (const col of preview.columns) {
+      const opt = document.createElement("option");
+      opt.value = col;
+      opt.textContent = col;
+      sel.appendChild(opt);
+    }
+
+    // Apply smart defaults
+    const suggested = preview.suggested_mapping[f];
+    if (suggested && preview.columns.includes(suggested)) {
+      sel.value = suggested;
+      sel.classList.add("matched");
+    } else {
+      sel.classList.remove("matched");
+    }
+  }
+
+  // Show sample data preview table
+  if (preview.sample_rows.length > 0) {
+    let html = "<table><thead><tr>";
+    for (const col of preview.columns) {
+      html += `<th>${esc(col)}</th>`;
+    }
+    html += "</tr></thead><tbody>";
+    for (const row of preview.sample_rows.slice(0, 3)) {
+      html += "<tr>";
+      for (const cell of row) {
+        html += `<td>${esc(cell)}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    mappingPreview.innerHTML = html;
+    mappingPreview.style.display = "block";
+  } else {
+    mappingPreview.style.display = "none";
+  }
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // --- Boot sequence orchestration ---
@@ -133,6 +246,7 @@ async function startUpload(uploadPromise: Promise<unknown>): Promise<void> {
 
   // Transition to boot sequence view
   uploadStep.style.display = "none";
+  mappingStep.style.display = "none";
   sequenceStep.style.display = "";
   card.classList.add("sequencing");
 

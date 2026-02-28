@@ -14,7 +14,8 @@ SAR_SYSTEM_PROMPT = (
     "4. Reference specific metrics, amounts, and patterns from the evidence.\n"
     "5. Include the time window and entity identifiers.\n"
     "6. If risk is genuinely low, state that no suspicious activity was identified.\n"
-    "7. Do NOT use markdown formatting — output plain text paragraphs only."
+    "7. Use markdown output with clear section headings and concise bullet points where useful.\n"
+    "8. Wrap all entity identifiers in backticks, for example `070_100428660`."
 )
 
 
@@ -115,12 +116,13 @@ def build_sar_prompt(payload: dict) -> str:
 
     lines.append("")
     lines.append(
-        "Write a formal SAR narrative with these sections:\n"
-        "1. Summary (1-2 sentences identifying the subject and nature of suspicion)\n"
-        "2. Suspicious Activity Description (detailed account of patterns and behaviors)\n"
-        "3. Supporting Evidence (specific metrics and data points)\n"
-        "4. Recommendation (suggested next steps for investigation)\n\n"
-        "Use approximately 200-400 words total. Use plain text only, no markdown."
+        "Write a formal SAR narrative in markdown with these sections:\n"
+        "## Summary\n"
+        "## Suspicious Activity Description\n"
+        "## Supporting Evidence\n"
+        "## Recommendation\n\n"
+        "In Supporting Evidence, include a short bullet list of the key quantitative facts. "
+        "Use approximately 220-450 words total."
     )
 
     return "\n".join(lines)

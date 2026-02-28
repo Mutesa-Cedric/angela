@@ -1,6 +1,6 @@
 import type { AutopilotTarget, EntityDetail, Neighborhood, Snapshot } from "../types";
 
-const BASE = import.meta.env.VITE_API_URL || "/api";
+const BASE = "/api";
 
 function extractErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;
@@ -85,26 +85,11 @@ export async function uploadFile(file: File): Promise<{ status: string; n_entiti
   return res.json();
 }
 
-export interface CSVPreviewStats {
-  total_rows: number;
-  unique_senders: number;
-  unique_receivers: number;
-  unique_entities: number;
-  amount_min: number | null;
-  amount_max: number | null;
-  amount_mean: number | null;
-  date_min: string | null;
-  date_max: string | null;
-  currencies: string[];
-  labeled_count: number | null;
-}
-
 export interface CSVPreview {
   columns: string[];
   sample_rows: string[][];
   suggested_mapping: Record<string, string | null>;
   row_count: number;
-  stats: CSVPreviewStats;
 }
 
 export async function previewCSV(file: File): Promise<CSVPreview> {

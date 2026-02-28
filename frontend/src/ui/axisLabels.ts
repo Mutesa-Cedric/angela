@@ -35,17 +35,17 @@ function makeTextSprite(
   text: string,
   color: string = "#9fc7ff",
   bg: string = "rgba(8, 14, 28, 0.55)",
-  scaleX: number = 3.8,
-  scaleY: number = 1.2,
+  scaleX: number = 1.8,
+  scaleY: number = 0.5,
 ): THREE.Sprite {
   const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 200;
+  canvas.width = 256;
+  canvas.height = 64;
 
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (bg !== "transparent") {
-    drawRoundedRect(ctx, 12, 20, canvas.width - 24, canvas.height - 40, 22);
+    drawRoundedRect(ctx, 6, 8, canvas.width - 12, canvas.height - 16, 10);
     ctx.fillStyle = bg;
     ctx.fill();
     ctx.lineWidth = 1;
@@ -53,7 +53,7 @@ function makeTextSprite(
     ctx.stroke();
   }
 
-  ctx.font = "700 68px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "700 24px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillStyle = color;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -205,30 +205,30 @@ export function addAxisLabels(scene: THREE.Scene): void {
       0x8eb0e8,
       0.7,
     );
-    const pct = makeTextSprite(`${Math.round(band * 100)}%`, "#9ebce8", "rgba(10, 14, 26, 0.5)", 2.6, 0.9);
-    pct.position.set(AXIS_ANCHOR_X - 2.2, y, AXIS_ANCHOR_Z);
+    const pct = makeTextSprite(`${Math.round(band * 100)}%`, "#9ebce8", "rgba(10, 14, 26, 0.5)", 0.9, 0.3);
+    pct.position.set(AXIS_ANCHOR_X - 1.5, y, AXIS_ANCHOR_Z);
     group.add(pct);
   }
 
   // ── Axis labels ───────────────────────────────────────────────────────
-  const yLabel = makeTextSprite("RISK", "#9fd0ff", "rgba(8, 14, 28, 0.62)", 4.3, 1.35);
-  yLabel.position.set(AXIS_ANCHOR_X, AXIS_Y_MAX + 1.25, AXIS_ANCHOR_Z);
+  const yLabel = makeTextSprite("RISK", "#9fd0ff", "rgba(8, 14, 28, 0.62)", 1.55, 0.42);
+  yLabel.position.set(AXIS_ANCHOR_X, AXIS_Y_MAX + 0.95, AXIS_ANCHOR_Z);
   group.add(yLabel);
 
-  const xLabel = makeTextSprite("JURISDICTION", "#9fd0ff", "rgba(8, 14, 28, 0.62)", 6.0, 1.6);
-  xLabel.position.set(0, FLOOR_Y - 1.55, AXIS_ANCHOR_Z);
+  const xLabel = makeTextSprite("JURISDICTION", "#9fd0ff", "rgba(8, 14, 28, 0.62)", 2.3, 0.46);
+  xLabel.position.set(0, FLOOR_Y - 1.22, AXIS_ANCHOR_Z);
   group.add(xLabel);
 
-  const zLabel = makeTextSprite("KYC", "#9ce4d6", "rgba(8, 14, 28, 0.62)", 4.1, 1.3);
-  zLabel.position.set(AXIS_ANCHOR_X, FLOOR_Y + 0.95, RISK_LAYOUT.kycZOffset * 0.5);
+  const zLabel = makeTextSprite("KYC", "#9ce4d6", "rgba(8, 14, 28, 0.62)", 1.4, 0.42);
+  zLabel.position.set(AXIS_ANCHOR_X, FLOOR_Y + 0.66, RISK_LAYOUT.kycZOffset * 0.5);
   group.add(zLabel);
 
-  const zStd = makeTextSprite("Std", "#9eb8d8", "rgba(10, 14, 26, 0.44)", 3.1, 1.05);
-  zStd.position.set(AXIS_ANCHOR_X - 1.8, FLOOR_Y + 0.9, -0.28);
+  const zStd = makeTextSprite("Std", "#9eb8d8", "rgba(10, 14, 26, 0.44)", 0.9, 0.28);
+  zStd.position.set(AXIS_ANCHOR_X + 1.55, FLOOR_Y + 0.03, -0.05);
   group.add(zStd);
 
-  const zEnh = makeTextSprite("Enh", "#ffc67b", "rgba(18, 14, 10, 0.44)", 3.2, 1.05);
-  zEnh.position.set(AXIS_ANCHOR_X - 1.8, FLOOR_Y + 0.9, RISK_LAYOUT.kycZOffset + 0.28);
+  const zEnh = makeTextSprite("Enh", "#ffc67b", "rgba(18, 14, 10, 0.44)", 0.95, 0.28);
+  zEnh.position.set(AXIS_ANCHOR_X + 1.65, FLOOR_Y + 0.03, RISK_LAYOUT.kycZOffset);
   group.add(zEnh);
 
   scene.add(group);

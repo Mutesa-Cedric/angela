@@ -11,15 +11,13 @@ const _tmpB = new THREE.Color();
 /** Continuous risk-to-color gradient for edges. */
 function edgeRiskColor(risk: number): THREE.Color {
   if (risk < 0.3) {
-    return _tmpA.set(0x238551).lerp(_tmpB.set(0xf39f41), risk / 0.3);
+    return _tmpA.set(0x2d5fa5).lerp(_tmpB.set(0x35c2a0), risk / 0.3);
   } else if (risk < 0.6) {
-    return _tmpA.set(0xf39f41).lerp(_tmpB.set(0xcd4246), (risk - 0.3) / 0.3);
+    return _tmpA.set(0x35c2a0).lerp(_tmpB.set(0xffb24b), (risk - 0.3) / 0.3);
   } else {
-    return _tmpA.set(0xcd4246).lerp(_tmpB.set(0x7961db), (risk - 0.6) / 0.4);
+    return _tmpA.set(0xffb24b).lerp(_tmpB.set(0xff5555), (risk - 0.6) / 0.4);
   }
 }
-
-const HIGH_RISK_EDGE_THRESHOLD = 0.5;
 
 interface Tier {
   maxAmount: number;
@@ -60,79 +58,60 @@ export class EdgeLayer {
     for (const tier of tiers) {
       if (tier.edges.length === 0) continue;
 
-      // Split edges into solid (low-risk) and dashed (high-risk) groups
-      const solidPositions: number[] = [];
-      const solidColors: number[] = [];
-      const dashPositions: number[] = [];
-      const dashColors: number[] = [];
+      const positions: number[] = [];
+      const colors: number[] = [];
 
       for (const edge of tier.edges) {
         const fromPos = nodeLayer.getPosition(edge.from_id);
         const toPos = nodeLayer.getPosition(edge.to_id);
         if (!fromPos || !toPos) continue;
 
+        positions.push(fromPos.x, fromPos.y, fromPos.z);
+        positions.push(toPos.x, toPos.y, toPos.z);
+
         const maxRisk = Math.max(
           riskScores.get(edge.from_id) ?? 0,
           riskScores.get(edge.to_id) ?? 0,
         );
         const c = edgeRiskColor(maxRisk);
-        const isHighRisk = maxRisk >= HIGH_RISK_EDGE_THRESHOLD;
-
-        const posArr = isHighRisk ? dashPositions : solidPositions;
-        const colArr = isHighRisk ? dashColors : solidColors;
-
-        posArr.push(fromPos.x, fromPos.y, fromPos.z);
-        posArr.push(toPos.x, toPos.y, toPos.z);
-        colArr.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
       }
 
-      // Create solid segment (low-risk edges)
-      if (solidPositions.length > 0) {
-        this.createSegment(solidPositions, solidColors, tier.linewidth, false);
-      }
-      // Create dashed segment (high-risk edges)
-      if (dashPositions.length > 0) {
-        this.createSegment(dashPositions, dashColors, tier.linewidth, true);
-      }
+      if (positions.length === 0) continue;
+
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(positions);
+      geometry.setColors(colors);
+
+      const material = new LineMaterial({
+        linewidth: tier.linewidth,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.86,
+        dashed: true,
+        dashScale: 1,
+        dashSize: 1.15,
+        gapSize: 0.18,
+        dashOffset: 0,
+        worldUnits: true,
+        depthWrite: false,
+        depthTest: false,
+      });
+      material.resolution.set(window.innerWidth, window.innerHeight);
+
+      const seg = new LineSegments2(geometry, material);
+      seg.computeLineDistances();
+      this.group.add(seg);
+      this.segments.push(seg);
+      this.materials.push(material);
     }
   }
 
-  private createSegment(
-    positions: number[],
-    colors: number[],
-    linewidth: number,
-    dashed: boolean,
-  ): void {
-    const geometry = new LineSegmentsGeometry();
-    geometry.setPositions(positions);
-    geometry.setColors(colors);
-
-    const material = new LineMaterial({
-      linewidth,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.7,
-      dashed,
-      dashScale: 1,
-      dashSize: dashed ? 1.15 : 0,
-      gapSize: dashed ? 0.35 : 0,
-      dashOffset: 0,
-      worldUnits: true,
-      depthWrite: false,
-      depthTest: true,
-    });
-    material.resolution.set(window.innerWidth, window.innerHeight);
-
-    const seg = new LineSegments2(geometry, material);
-    seg.computeLineDistances();
-    this.group.add(seg);
-    this.segments.push(seg);
-    this.materials.push(material);
-  }
-
-  /** Per-frame tick — static edges, no animation. */
-  animate(_dt: number): void {
-    // No-op: edges are static
+  /** Animate dash flow — call per frame. */
+  animate(dt: number): void {
+    for (const mat of this.materials) {
+      mat.dashOffset -= dt * 0.5;
+    }
   }
 
   /** Show counterfactual removed edges as red, thicker lines. */

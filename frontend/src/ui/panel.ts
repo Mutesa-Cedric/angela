@@ -115,7 +115,6 @@ export function onCounterfactual(cb: (result: CounterfactualResult) => void): vo
 
 export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   panel.classList.add("open");
-  document.body.classList.add("detail-open");
   currentEntity = entity;
 
   const riskPct = (entity.risk_score * 100).toFixed(0);
@@ -138,7 +137,7 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   // --- Risk score with large number ---
   const riskHTML = `
     <div class="risk-score">
-      <label>Risk Score <span class="soft-tip" title="Model-estimated priority score for this time window. It guides review order and is not a legal conclusion.">?</span></label>
+      <label>Risk Score <span class="soft-tip" title="Model-estimated priority score for this bucket. It guides review order and is not a legal conclusion.">?</span></label>
       <div class="risk-number-row">
         <div class="risk-number" style="color:${riskCSS}">${riskPct}%</div>
         <span class="risk-band risk-band-${riskBand.key}" title="${escapeHtml(riskBand.note)}">${riskBand.label}</span>
@@ -156,12 +155,12 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
         <h3>Activity Snapshot <span class="soft-tip" title="Transaction volume and direction for this entity in the selected time bucket.">?</span></h3>
         <div class="soft-copy">Use this to understand whether funds are mostly entering, leaving, or netting out.</div>
         <div class="activity-grid">
-          <div class="activity-card" title="Inbound transfers received by this entity in this time window.">
+          <div class="activity-card" title="Inbound transfers received by this entity in this bucket.">
             <span class="activity-label">Inbound</span>
             <span class="activity-value">${entity.activity.in_count} tx</span>
             <span class="activity-meta">$${entity.activity.in_sum.toLocaleString()}</span>
           </div>
-          <div class="activity-card" title="Outbound transfers sent by this entity in this time window.">
+          <div class="activity-card" title="Outbound transfers sent by this entity in this bucket.">
             <span class="activity-label">Outbound</span>
             <span class="activity-value">${entity.activity.out_count} tx</span>
             <span class="activity-meta">$${entity.activity.out_sum.toLocaleString()}</span>
@@ -178,7 +177,7 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
       </div>`
     : `<div class="activity-section">
         <h3>Activity Snapshot <span class="soft-tip" title="Transaction volume and direction for this entity in the selected time bucket.">?</span></h3>
-        <div class="soft-copy">No recorded inbound or outbound activity for this entity in the current time window.</div>
+        <div class="soft-copy">No recorded inbound or outbound activity for this entity in the current bucket.</div>
       </div>`;
 
   // --- Risk attribution bar ---
@@ -194,38 +193,27 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   const connectedHTML = buildConnectedEntities(neighborhood);
 
   panelContent.innerHTML = `
-    <div class="panel-tab-content active" data-tab="overview">
-      <div class="entity-context-row">
-        <div class="entity-id">${entity.id}</div>
-        <span class="bucket-chip" title="Current time window shown in this panel.">${formatBucketLabel()}</span>
-      </div>
-      ${badgesHTML}
-      ${quickGuideHTML}
-      ${riskHTML}
-      ${activityHTML}
-      ${attrHTML}
+    <div class="entity-context-row">
+      <div class="entity-id">${entity.id}</div>
+      <span class="bucket-chip" title="Current time window shown in this panel. Buckets are sequential slices of activity over time.">${formatBucketLabel()}</span>
     </div>
-    <div class="panel-tab-content" data-tab="evidence">
-      ${evidenceHTML || '<div class="muted">No evidence cards for this entity in the current time window.</div>'}
-      ${flaggedHTML}
+    ${badgesHTML}
+    ${quickGuideHTML}
+    ${riskHTML}
+    ${activityHTML}
+    ${attrHTML}
+    ${evidenceHTML}
+    ${flaggedHTML}
+    ${connectedHTML}
+    <div class="ai-section">
+      <h3>AI Analysis <span class="soft-tip" title="Narrative summary generated from the evidence shown above. Always verify against the numeric evidence cards.">?</span></h3>
+      <div class="soft-copy">Plain-language recap to help non-technical reviewers understand the key concern quickly.</div>
+      <div id="ai-summary" class="ai-summary markdown-content muted">Loading AI summary...</div>
     </div>
-    <div class="panel-tab-content" data-tab="connections">
-      ${connectedHTML || '<div class="muted">No connected entities in the current neighborhood view.</div>'}
-    </div>
-    <div class="panel-tab-content" data-tab="ai">
-      <div class="ai-section">
-        <h3>AI Analysis <span class="soft-tip" title="Narrative summary generated from the evidence shown above. Always verify against the numeric evidence cards.">?</span></h3>
-        <div class="soft-copy">Plain-language recap to help non-technical reviewers understand the key concern quickly.</div>
-        <div id="ai-summary" class="ai-summary markdown-content muted">Loading AI summary...</div>
-      </div>
-      <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
-      ${entity.risk_score > 0.1 ? '<button id="panel-cf-btn" class="panel-cf-btn">What If? (Counterfactual)</button>' : ""}
-      <div id="cf-result" style="display:none"></div>
-    </div>
+    <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
+    ${entity.risk_score > 0.1 ? '<button id="panel-cf-btn" class="panel-cf-btn">What If? (Counterfactual)</button>' : ""}
+    <div id="cf-result" style="display:none"></div>
   `;
-
-  // Reset to overview tab
-  switchTab("overview");
 
   document.getElementById("panel-sar-btn")!.addEventListener("click", () => {
     if (currentEntity) {
@@ -299,7 +287,7 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
         <div class="evidence-stats">
           <div class="evidence-stat">
             <span class="evidence-value">${v.tx_count}</span>
-            <span class="evidence-label" title="How many transfers involved this entity during this selected time bucket.">tx in window</span>
+            <span class="evidence-label" title="How many transfers involved this entity during this selected time bucket.">tx in bucket</span>
           </div>
           <div class="evidence-stat">
             <span class="evidence-value">${v.tx_per_minute.toFixed(1)}</span>
@@ -355,7 +343,7 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
 
   return `
     <div class="evidence-section">
-      <h3>Evidence Breakdown <span class="soft-tip" title="Concrete numeric patterns that triggered or supported risk signals in this time window.">?</span></h3>
+      <h3>Evidence Breakdown <span class="soft-tip" title="Concrete numeric patterns that triggered or supported risk signals in this bucket.">?</span></h3>
       <div class="soft-copy">These cards translate detector output into plain-language facts you can verify quickly.</div>
       ${cards.join("")}
     </div>`;
@@ -445,14 +433,14 @@ function buildConnectedEntities(neighborhood?: Neighborhood): string {
       const net = item.inbound - item.outbound;
       const relationLabel = item.directTxCount > 0
         ? `${item.directTxCount} direct tx`
-        : `${neighborhood.k}-step context`;
+        : `${neighborhood.k}-hop context`;
       const relationClass = item.directTxCount > 0 ? "direct" : "indirect";
       const netLabel = `${net >= 0 ? "+" : "-"}${formatCompactCurrency(Math.abs(net))}`;
       return `
         <div class="connected-row" title="Neighbor risk score and direct flow context in this time window.">
           <div class="connected-main-row">
             <button class="connected-entity-link" data-entity-id="${item.node.id}">${item.node.id}</button>
-            <span class="connected-relation ${relationClass}" title="Shows whether this entity has direct transactions with the selected subject in this time window.">${relationLabel}</span>
+            <span class="connected-relation ${relationClass}" title="Shows whether this entity has direct transactions with the selected subject in this bucket.">${relationLabel}</span>
             <span class="connected-pct" style="color:${color}">${pct}%</span>
           </div>
           <div class="connected-risk-bar">
@@ -470,7 +458,7 @@ function buildConnectedEntities(neighborhood?: Neighborhood): string {
   return `
     <div class="connected-section">
       <h3>Connected Entities <span class="connected-help">(click ID to inspect)</span> <span class="soft-tip" title="Top nearby entities by risk in this neighborhood view. These often explain context around suspicious flows.">?</span></h3>
-      <div class="soft-copy">Top neighbors for ${formatBucketLabel().toLowerCase()}. Rows marked as direct have observed transfers with the selected entity; others are extended-reach links.</div>
+      <div class="soft-copy">Top neighbors for ${formatBucketLabel().toLowerCase()}. Rows marked as direct have observed transfers with the selected entity; others are contextual k-hop links.</div>
       ${rows}
     </div>`;
 }
@@ -609,36 +597,12 @@ async function runCounterfactual(): Promise<void> {
   }
 }
 
-// ── Tab switching ────────────────────────────────────────────────────
-
-export function initTabs(): void {
-  const tabButtons = document.querySelectorAll<HTMLButtonElement>("#panel-tabs .panel-tab");
-  for (const btn of Array.from(tabButtons)) {
-    btn.addEventListener("click", () => {
-      switchTab(btn.dataset.tab ?? "overview");
-    });
-  }
-}
-
-function switchTab(tab: string): void {
-  const tabButtons = document.querySelectorAll<HTMLButtonElement>("#panel-tabs .panel-tab");
-  for (const btn of Array.from(tabButtons)) {
-    btn.classList.toggle("active", btn.dataset.tab === tab);
-  }
-  const sections = panelContent.querySelectorAll<HTMLDivElement>(".panel-tab-content");
-  for (const section of Array.from(sections)) {
-    section.classList.toggle("active", section.dataset.tab === tab);
-  }
-}
-
 export function hide(): void {
   panel.classList.remove("open");
-  document.body.classList.remove("detail-open");
 }
 
 export function showLoading(): void {
   panel.classList.add("open");
-  document.body.classList.add("detail-open");
   panelContent.innerHTML = '<div class="muted">Loading...</div>';
 }
 

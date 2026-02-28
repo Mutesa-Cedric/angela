@@ -16,6 +16,6 @@ export function tick(): void {
 }
 
 export function updateCounts(nodes: number, edges: number): void {
-  nodesEl.textContent = `${nodes.toLocaleString()} ENTITIES`;
-  edgesEl.textContent = `${edges.toLocaleString()} CONNECTIONS`;
+  nodesEl.textContent = `${nodes} nodes`;
+  edgesEl.textContent = `${edges} edges`;
 }

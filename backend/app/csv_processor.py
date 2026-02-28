@@ -62,7 +62,7 @@ SMART_MATCH: dict[str, list[str]] = {
 
 
 def preview_csv(file_bytes: bytes, max_rows: int = 5) -> dict:
-    """Read CSV header + sample rows, suggest column mappings, and compute dataset statistics."""
+    """Read CSV header + sample rows and suggest column mappings."""
     text = file_bytes.decode("utf-8", errors="replace")
     reader = csv.reader(io.StringIO(text))
 
@@ -72,6 +72,11 @@ def preview_csv(file_bytes: bytes, max_rows: int = 5) -> dict:
         raise ValueError("CSV file is empty")
 
     columns = [h.strip() for h in header]
+    rows: list[list[str]] = []
+    for i, cols in enumerate(reader):
+        if i >= max_rows:
+            break
+        rows.append([c.strip() for c in cols])
 
     # Smart-match: for each target field, find best matching column
     suggested: dict[str, Optional[str]] = {}
@@ -83,102 +88,11 @@ def preview_csv(file_bytes: bytes, max_rows: int = 5) -> dict:
                 break
         suggested[field] = match
 
-    # Resolve column indices for stats computation
-    col_idx: dict[str, int] = {}
-    for field, col_name in suggested.items():
-        if col_name and col_name in columns:
-            col_idx[field] = columns.index(col_name)
-
-    # Single pass: collect sample rows + compute stats
-    sample_rows: list[list[str]] = []
-    total_rows = 0
-    senders: set[str] = set()
-    receivers: set[str] = set()
-    amounts: list[float] = []
-    timestamps: list[str] = []
-    currencies: set[str] = set()
-    labeled_count = 0
-
-    for cols in reader:
-        stripped = [c.strip() for c in cols]
-        total_rows += 1
-
-        if len(sample_rows) < max_rows:
-            sample_rows.append(stripped)
-
-        # Collect stats from mapped columns
-        if "from_id" in col_idx and col_idx["from_id"] < len(stripped):
-            v = stripped[col_idx["from_id"]]
-            if v:
-                senders.add(v)
-
-        if "to_id" in col_idx and col_idx["to_id"] < len(stripped):
-            v = stripped[col_idx["to_id"]]
-            if v:
-                receivers.add(v)
-
-        if "amount" in col_idx and col_idx["amount"] < len(stripped):
-            try:
-                amt = float(stripped[col_idx["amount"]].replace(",", ""))
-                amounts.append(amt)
-            except (ValueError, IndexError):
-                pass
-
-        if "timestamp" in col_idx and col_idx["timestamp"] < len(stripped):
-            v = stripped[col_idx["timestamp"]]
-            if v:
-                timestamps.append(v)
-
-        if "currency" in col_idx and col_idx["currency"] < len(stripped):
-            v = stripped[col_idx["currency"]]
-            if v:
-                currencies.add(v)
-
-        if "label" in col_idx and col_idx["label"] < len(stripped):
-            v = stripped[col_idx["label"]].lower()
-            if v in ("1", "true", "yes"):
-                labeled_count += 1
-
-    # Compute amount stats
-    amount_min = min(amounts) if amounts else None
-    amount_max = max(amounts) if amounts else None
-    amount_mean = round(sum(amounts) / len(amounts), 2) if amounts else None
-
-    # Compute date range
-    date_min: Optional[str] = None
-    date_max: Optional[str] = None
-    if timestamps:
-        parsed_ts = []
-        for ts in timestamps:
-            epoch = parse_timestamp(ts)
-            if epoch is not None:
-                parsed_ts.append(epoch)
-        if parsed_ts:
-            date_min = datetime.fromtimestamp(min(parsed_ts), tz=timezone.utc).strftime("%Y-%m-%d")
-            date_max = datetime.fromtimestamp(max(parsed_ts), tz=timezone.utc).strftime("%Y-%m-%d")
-
-    all_entities = senders | receivers
-
-    stats = {
-        "total_rows": total_rows,
-        "unique_senders": len(senders),
-        "unique_receivers": len(receivers),
-        "unique_entities": len(all_entities),
-        "amount_min": amount_min,
-        "amount_max": amount_max,
-        "amount_mean": amount_mean,
-        "date_min": date_min,
-        "date_max": date_max,
-        "currencies": sorted(currencies),
-        "labeled_count": labeled_count if "label" in col_idx else None,
-    }
-
     return {
         "columns": columns,
-        "sample_rows": sample_rows[:3],
+        "sample_rows": rows,
         "suggested_mapping": suggested,
-        "row_count": len(sample_rows),
-        "stats": stats,
+        "row_count": len(rows),
     }
 
 

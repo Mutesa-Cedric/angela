@@ -5,6 +5,9 @@ import type { ClusterData } from "../api/client";
 // ── Cluster visual constants ──────────────────────────────────────────
 
 const RING_SEGMENTS = 64;
+const RING_TUBE = 0.03;
+const BEACON_HEIGHT = 0.4;
+const BEACON_RADIUS = 0.12;
 const LABEL_Y_OFFSET = 1.2;
 
 // ── ClusterLayer ──────────────────────────────────────────────────────
@@ -12,6 +15,7 @@ const LABEL_Y_OFFSET = 1.2;
 interface ClusterVisual {
   id: string;
   ring: THREE.Mesh;
+  beacon: THREE.Mesh;
   label: HTMLDivElement;
   centroid: THREE.Vector3;
   radius: number;
@@ -67,20 +71,33 @@ export class ClusterLayer {
       // Risk-based color
       const riskColor = this.riskToColor(cluster.risk_score);
 
-      // Static ring — analytical boundary marker
-      const ringGeo = new THREE.RingGeometry(ringRadius - 0.04, ringRadius + 0.04, RING_SEGMENTS);
+      // Ring — TorusGeometry lying flat (XZ plane)
+      const ringGeo = new THREE.TorusGeometry(ringRadius, RING_TUBE, 8, RING_SEGMENTS);
       const ringMat = new THREE.MeshBasicMaterial({
         color: riskColor,
         transparent: true,
-        opacity: 0.35,
-        side: THREE.DoubleSide,
+        opacity: 0.48,
         depthWrite: false,
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.x = -Math.PI / 2;
+      ring.rotation.x = -Math.PI / 2; // Lay flat
       ring.position.copy(centroid);
-      ring.position.y = centroid.y - 0.15;
+      ring.position.y = centroid.y - 0.2; // Slightly below nodes
       this.group.add(ring);
+
+      // Beacon — small glowing cone at centroid
+      const beaconGeo = new THREE.ConeGeometry(BEACON_RADIUS, BEACON_HEIGHT, 6);
+      const beaconMat = new THREE.MeshBasicMaterial({
+        color: riskColor,
+        transparent: true,
+        opacity: 0.84,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+      beacon.position.copy(centroid);
+      beacon.position.y = centroid.y + LABEL_Y_OFFSET - 0.3;
+      this.group.add(beacon);
 
       // HTML label anchored to 3D position
       const label = document.createElement("div");
@@ -94,6 +111,7 @@ export class ClusterLayer {
       this.visuals.push({
         id: cluster.cluster_id,
         ring,
+        beacon,
         label,
         centroid: centroid.clone(),
         radius: ringRadius,
@@ -102,9 +120,24 @@ export class ClusterLayer {
     }
   }
 
-  /** Call per frame — project labels to screen. */
+  /** Call per frame — animate rings, beacons, and project labels. */
   animate(): void {
+    const time = performance.now() * 0.001;
+
     for (const vis of this.visuals) {
+      // Ring pulse — gentle scale oscillation
+      const pulse = 1 + Math.sin(time * 1.5 + vis.riskScore * 10) * 0.04;
+      vis.ring.scale.setScalar(pulse);
+
+      // Ring opacity breathing
+      const ringMat = vis.ring.material as THREE.MeshBasicMaterial;
+      ringMat.opacity = 0.34 + Math.sin(time * 1.2) * 0.12 * vis.riskScore;
+
+      // Beacon rotation and pulse
+      vis.beacon.rotation.y = time * 0.5;
+      const beaconPulse = 0.6 + Math.sin(time * 2 + vis.riskScore * 5) * 0.15;
+      (vis.beacon.material as THREE.MeshBasicMaterial).opacity = beaconPulse;
+
       // Project label to screen
       const screenPos = vis.centroid.clone();
       screenPos.y += LABEL_Y_OFFSET;
@@ -131,16 +164,19 @@ export class ClusterLayer {
   clear(): void {
     for (const vis of this.visuals) {
       this.group.remove(vis.ring);
+      this.group.remove(vis.beacon);
       vis.ring.geometry.dispose();
       (vis.ring.material as THREE.Material).dispose();
+      vis.beacon.geometry.dispose();
+      (vis.beacon.material as THREE.Material).dispose();
       vis.label.remove();
     }
     this.visuals = [];
   }
 
   private riskToColor(risk: number): THREE.Color {
-    if (risk < 0.4) return new THREE.Color(0x238551);
-    if (risk < 0.6) return new THREE.Color(0xf39f41);
-    return new THREE.Color(0xcd4246);
+    if (risk < 0.4) return new THREE.Color(0x6ea7ff);
+    if (risk < 0.6) return new THREE.Color(0xffbf57);
+    return new THREE.Color(0xff6a54);
   }
 }

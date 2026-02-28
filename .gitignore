@@ -1,6 +1,14 @@
 # Docs (local only, not committed)
 docs/
 
+# Env (never commit secrets)
+.env
+.env.*
+
+# Env (never commit secrets)
+.env
+.env.*
+
 # Data & Assets (never commit)
 data/raw/
 backend/assets/
@@ -20,11 +28,6 @@ __pycache__/
 # Node
 node_modules/
 dist/
-
-# Environment
-.env
-.env.*
-!.env.example
 
 # IDE
 .vscode/

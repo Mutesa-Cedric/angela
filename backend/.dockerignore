@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+tests/
+requirements-dev.txt
+.DS_Store

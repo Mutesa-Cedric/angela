@@ -60,23 +60,53 @@ function render(data: DashboardData): void {
 
   const html = `
     <div class="dash-kpis">
-      ${kpiCard("High-Risk Entities", k.high_risk_entities.toString(), "#ff4466", `of ${k.total_entities} total`)}
-      ${kpiCard("New Anomalies", k.new_anomalies.toString(), "#ffaa00", "since last window")}
-      ${kpiCard("Clusters", k.cluster_count.toString(), "#aa66ff", "connected groups")}
-      ${kpiCard("Cross-Border Risk", `${(k.cross_border_ratio * 100).toFixed(0)}%`, "#ff8844", "of risky transactions")}
+      ${kpiCard(
+    "High-Risk Entities",
+    k.high_risk_entities.toString(),
+    "#ff4466",
+    `of ${k.total_entities} total`,
+    "Number of entities currently classified above the high-risk threshold.",
+  )}
+      ${kpiCard(
+    "New Anomalies",
+    k.new_anomalies.toString(),
+    "#ffaa00",
+    "since last window",
+    "How many new unusual behaviors appeared since the last time bucket.",
+  )}
+      ${kpiCard(
+    "Clusters",
+    k.cluster_count.toString(),
+    "#aa66ff",
+    "connected groups",
+    "Count of connected groups that exhibit correlated risk behavior.",
+  )}
+      ${kpiCard(
+    "Cross-Border Risk",
+    `${(k.cross_border_ratio * 100).toFixed(0)}%`,
+    "#ff8844",
+    "of risky transactions",
+    "Share of flagged activity that crosses jurisdictions.",
+  )}
     </div>
     <div class="dash-charts">
       <div class="dash-chart-panel">
-        <h3>Risk Trend</h3>
+        <h3 class="dash-tooltip-target" tabindex="0" data-tooltip="Timeline of total portfolio risk per bucket. The dotted line tracks high-risk entity count on a separate normalized scale.">
+          Risk Trend
+        </h3>
         <canvas id="dash-trend-canvas" width="500" height="180"></canvas>
       </div>
       <div class="dash-chart-panel">
-        <h3>Jurisdiction Risk</h3>
+        <h3 class="dash-tooltip-target" tabindex="0" data-tooltip="Average risk and concentration by jurisdiction to highlight geographic hot spots.">
+          Jurisdiction Risk
+        </h3>
         <div id="dash-heatmap" class="dash-heatmap"></div>
       </div>
     </div>
     <div class="dash-summary-section">
-      <h3>Executive Summary</h3>
+      <h3 class="dash-tooltip-target" tabindex="0" data-tooltip="Auto-generated narrative of current risk posture, changes, and notable concentration signals.">
+        Executive Summary
+      </h3>
       <div class="dash-summary">${generateSummaryText(data)}</div>
     </div>
   `;
@@ -90,11 +120,17 @@ function render(data: DashboardData): void {
   });
 }
 
-function kpiCard(label: string, value: string, color: string, subtitle: string): string {
+function kpiCard(
+  label: string,
+  value: string,
+  color: string,
+  subtitle: string,
+  description: string,
+): string {
   return `
     <div class="dash-kpi">
       <div class="dash-kpi-value" style="color:${color}">${value}</div>
-      <div class="dash-kpi-label">${label}</div>
+      <div class="dash-kpi-label dash-tooltip-target" tabindex="0" data-tooltip="${description}">${label}</div>
       <div class="dash-kpi-sub">${subtitle}</div>
     </div>`;
 }
@@ -111,7 +147,7 @@ function drawTrendChart(
   const ctx = canvas.getContext("2d")!;
   const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
   const cssWidth = Math.max(500, Math.round(canvas.clientWidth || 500));
-  const cssHeight = 220;
+  const cssHeight = 300;
   const targetWidth = cssWidth * dpr;
   const targetHeight = cssHeight * dpr;
 
@@ -125,7 +161,7 @@ function drawTrendChart(
 
   const w = cssWidth;
   const h = cssHeight;
-  const padding = { top: 10, right: 10, bottom: 25, left: 40 };
+  const padding = { top: 34, right: 16, bottom: 38, left: 54 };
 
   ctx.clearRect(0, 0, w, h);
 
@@ -145,6 +181,15 @@ function drawTrendChart(
     ctx.lineTo(w - padding.right, y);
     ctx.stroke();
   }
+
+  // Axes baseline
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, h - padding.bottom);
+  ctx.lineTo(w - padding.right, h - padding.bottom);
+  ctx.stroke();
 
   // Risk line
   ctx.strokeStyle = "#ff4466";
@@ -193,7 +238,7 @@ function drawTrendChart(
     ctx.fill();
   }
 
-  // X axis labels
+  // X axis tick labels
   ctx.fillStyle = "#556";
   ctx.font = "10px monospace";
   ctx.textAlign = "center";
@@ -203,13 +248,55 @@ function drawTrendChart(
     ctx.fillText(`${i}`, x, h - 5);
   }
 
-  // Y axis labels
+  // Y axis tick labels
   ctx.textAlign = "right";
   for (let i = 0; i <= 4; i++) {
     const y = padding.top + plotH * (1 - i / 4);
     const val = (maxRisk * i / 4).toFixed(0);
     ctx.fillText(val, padding.left - 5, y + 3);
   }
+
+  // Axis titles
+  ctx.fillStyle = "#7a88a5";
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Time Bucket", padding.left + plotW / 2, h - 8);
+
+  ctx.save();
+  ctx.translate(14, padding.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText("Total Risk Index", 0, 0);
+  ctx.restore();
+
+  // Legend
+  const legendY = 16;
+  let legendX = padding.left;
+  const legendGap = 14;
+
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#aab8d4";
+
+  // Total Risk legend
+  ctx.strokeStyle = "#ff4466";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(legendX, legendY);
+  ctx.lineTo(legendX + 14, legendY);
+  ctx.stroke();
+  ctx.fillText("Total Risk (left axis)", legendX + 18, legendY + 3);
+  legendX += 18 + ctx.measureText("Total Risk (left axis)").width + legendGap;
+
+  // High-risk count legend
+  ctx.strokeStyle = "rgba(255, 170, 0, 0.85)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(legendX, legendY);
+  ctx.lineTo(legendX + 14, legendY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillText("High-Risk Count (normalized)", legendX + 18, legendY + 3);
 }
 
 // ── Jurisdiction heatmap ────────────────────────────────────────────────
@@ -223,19 +310,13 @@ function drawHeatmap(heatmap: DashboardData["heatmap"]): void {
   const container = document.getElementById("dash-heatmap");
   if (!container) return;
 
-  const maxAvg = Math.max(...heatmap.map((h) => h.avg_risk), 0.01);
-
   container.innerHTML = heatmap
     .map((h) => {
-      const intensity = h.avg_risk / maxAvg;
-      const r = Math.round(40 + intensity * 215);
-      const g = Math.round(70 - intensity * 40);
-      const b = Math.round(100 - intensity * 60);
-      const bg = `rgba(${r},${g},${b},${0.2 + intensity * 0.6})`;
       const label = JURISDICTION_LABELS[h.jurisdiction] ?? `JUR-${h.jurisdiction}`;
+      const highRisk = h.high_risk_count > 0;
 
       return `
-        <div class="dash-heatmap-cell" style="background:${bg}">
+        <div class="dash-heatmap-cell ${highRisk ? "high-risk" : ""}">
           <div class="dash-hm-label">${label}</div>
           <div class="dash-hm-risk">${(h.avg_risk * 100).toFixed(0)}%</div>
           <div class="dash-hm-count">${h.entity_count} entities</div>
@@ -265,7 +346,7 @@ function generateSummaryText(data: DashboardData): string {
   // New anomalies
   if (k.new_anomalies > 0) {
     parts.push(
-      `${k.new_anomalies} new anomal${k.new_anomalies === 1 ? "y has" : "ies have"} emerged since the previous time window, requiring immediate attention.`,
+      `${k.new_anomalies} new unusual pattern${k.new_anomalies === 1 ? " was" : "s were"} found since the previous time window and should be reviewed.`,
     );
   }
 

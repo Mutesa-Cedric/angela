@@ -812,6 +812,57 @@ body.pitch-mode #scene-canvas {
   color: #556;
 }
 
+.dash-tooltip-target {
+  position: relative;
+  cursor: help;
+  text-decoration: underline dotted rgba(180, 196, 255, 0.45);
+  text-underline-offset: 2px;
+}
+
+.dash-tooltip-target::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 6px);
+  min-width: 180px;
+  max-width: 260px;
+  width: max-content;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(170, 102, 255, 0.4);
+  background: rgba(8, 10, 24, 0.95);
+  color: #d5ddf0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  white-space: normal;
+  text-transform: none;
+  text-align: left;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: 8;
+}
+
+.dash-tooltip-target:hover::after,
+.dash-tooltip-target:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.dash-kpi:first-child .dash-tooltip-target::after {
+  left: 0;
+  transform: translate(0, 6px);
+}
+
+.dash-kpi:first-child .dash-tooltip-target:hover::after,
+.dash-kpi:first-child .dash-tooltip-target:focus-visible::after {
+  transform: translate(0, 0);
+}
+
 .dash-charts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -819,7 +870,7 @@ body.pitch-mode #scene-canvas {
   margin-bottom: 14px;
 }
 
-.dash-charts .dash-chart-panel:first-child {
+.dash-charts .dash-chart-panel {
   grid-column: 1 / -1;
 }
 
@@ -827,7 +878,7 @@ body.pitch-mode #scene-canvas {
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 12px;
+  padding: 14px;
 }
 
 .dash-chart-panel h3 {
@@ -852,9 +903,10 @@ body.pitch-mode #scene-canvas {
 
 .dash-heatmap-cell {
   border-radius: 8px;
-  padding: 12px 8px;
+  padding: 14px 10px;
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent !important;
 }
 
 .dash-hm-label {
@@ -866,10 +918,14 @@ body.pitch-mode #scene-canvas {
 }
 
 .dash-hm-risk {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
   font-family: monospace;
-  color: #e0e8f0;
+  color: #ffffff;
+}
+
+.dash-heatmap-cell.high-risk .dash-hm-risk {
+  color: #ff4466;
 }
 
 .dash-hm-count {

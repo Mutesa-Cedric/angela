@@ -14,6 +14,7 @@ import * as demo from "./ui/demo";
 import { addAxisLabels } from "./ui/axisLabels";
 import { wsClient } from "./api/ws";
 import { Autopilot } from "./camera/Autopilot";
+import * as dashboard from "./ui/dashboard";
 import type { Snapshot, SnapshotNode } from "./types";
 
 const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
@@ -307,6 +308,20 @@ autopilotBtn.addEventListener("click", () => {
   autopilot.toggle(currentSnapshot.meta.t);
 });
 
+// --- Dashboard ---
+
+const dashboardBtn = document.getElementById("dashboard-btn") as HTMLButtonElement;
+
+dashboard.onToggle((open) => {
+  dashboardBtn.classList.toggle("active", open);
+  dashboardBtn.textContent = open ? "GRAPH" : "EXEC";
+});
+
+dashboardBtn.addEventListener("click", () => {
+  if (!currentSnapshot) return;
+  dashboard.toggle(currentSnapshot.meta.t);
+});
+
 // --- Per-frame updates ---
 let lastFrameTime = performance.now();
 ctx.onFrame(() => {
@@ -354,6 +369,7 @@ async function startGraph(preloaded?: Snapshot): Promise<void> {
   document.getElementById("stats-overlay")!.style.display = "flex";
   document.getElementById("demo-btn")!.style.display = "block";
   document.getElementById("autopilot-btn")!.style.display = "block";
+  document.getElementById("dashboard-btn")!.style.display = "block";
 
   // Connect WebSocket
   wsClient.connect();
@@ -371,6 +387,7 @@ async function init(): Promise<void> {
   document.getElementById("stats-overlay")!.style.display = "none";
   document.getElementById("demo-btn")!.style.display = "none";
   document.getElementById("autopilot-btn")!.style.display = "none";
+  document.getElementById("dashboard-btn")!.style.display = "none";
 
   try {
     const status = await getStatus();

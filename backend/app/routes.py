@@ -14,6 +14,7 @@ from .clusters import detect_clusters
 from .config import DATA_PATH
 from .investigation import generate_investigation_targets
 from .csv_processor import process_csv
+from .dashboard import compute_dashboard
 from .data_loader import store
 from .models import (
     EntityDetailOut,
@@ -538,3 +539,17 @@ async def generate_sar(
         "narrative": narrative,
         "payload": payload,
     }
+
+
+# --- Executive Dashboard ---
+
+@router.get("/dashboard")
+async def get_dashboard(
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+    return compute_dashboard(t)

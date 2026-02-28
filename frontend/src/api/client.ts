@@ -75,3 +75,21 @@ export async function generateSAR(id: string, t: number): Promise<SARResponse> {
   }
   return res.json();
 }
+
+export interface DashboardData {
+  bucket: number;
+  kpis: {
+    high_risk_entities: number;
+    new_anomalies: number;
+    cluster_count: number;
+    cross_border_ratio: number;
+    total_entities: number;
+    total_transactions: number;
+  };
+  trend: { bucket: number; total_risk: number; high_risk_count: number; entity_count: number }[];
+  heatmap: { jurisdiction: number; avg_risk: number; entity_count: number; high_risk_count: number }[];
+}
+
+export function getDashboard(t: number): Promise<DashboardData> {
+  return fetchJSON<DashboardData>(`${BASE}/dashboard?t=${t}`);
+}

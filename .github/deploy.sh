@@ -1,36 +1,59 @@
 #!/bin/bash
 set -e
 
-# These are passed as arguments
 PROJECT_DIR=$1
 DATA_DIR=$2
 LOGS_DIR=$3
 HOST_PORT=$4
 ENV_FILE=$5
+BACKEND_IMAGE="angela-backend"
+FRONTEND_IMAGE="angela-frontend"
 
-# Backend branch uses docker-compose with PostgreSQL
 cd "$PROJECT_DIR"
 git pull origin backend
 
 mkdir -p "$DATA_DIR"
 mkdir -p "$LOGS_DIR"
 
-# Export for docker-compose.yml substitution
-export ANGELA_DATA_DIR="${DATA_DIR}"
-export ANGELA_LOGS_DIR="${LOGS_DIR}"
-export ANGELA_HOST_PORT="${HOST_PORT:-3000}"
+# Build backend
+echo "Building backend..."
+cd backend
+docker build -t "$BACKEND_IMAGE" .
+cd ..
 
-# Copy env file if provided (skip if same file)
-if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
-    if ! cmp -s "$ENV_FILE" .env 2>/dev/null; then
-        cp "$ENV_FILE" .env
-    fi
-fi
+# Build frontend
+echo "Building frontend..."
+cd frontend
+docker build -t "$FRONTEND_IMAGE" .
+cd ..
 
-# Build and deploy with docker-compose (includes postgres, backend, frontend)
-docker-compose down || true
-docker-compose build
-docker-compose up -d
+# Stop and remove old containers
+docker stop "$BACKEND_IMAGE" "$FRONTEND_IMAGE" 2>/dev/null || true
+docker rm "$BACKEND_IMAGE" "$FRONTEND_IMAGE" 2>/dev/null || true
+
+# Run backend
+echo "Starting backend..."
+docker run -d \
+  --name "$BACKEND_IMAGE" \
+  -p 8000:8000 \
+  -v "$DATA_DIR":/data:ro \
+  -v "$LOGS_DIR":/app/logs \
+  --env-file "$ENV_FILE" \
+  -e ANGELA_DATA_DIR=/data/processed \
+  --restart unless-stopped \
+  "$BACKEND_IMAGE"
+
+# Run frontend
+echo "Starting frontend..."
+docker run -d \
+  --name "$FRONTEND_IMAGE" \
+  -p "${HOST_PORT:-3000}":80 \
+  --restart unless-stopped \
+  "$FRONTEND_IMAGE"
 
 # Cleanup old images
 docker image prune -f
+
+echo "Deploy complete!"
+echo "Backend: http://localhost:8000"
+echo "Frontend: http://localhost:${HOST_PORT:-3000}"

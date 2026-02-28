@@ -44,6 +44,26 @@ body {
   min-width: 70px;
 }
 
+.control-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(68, 136, 255, 0.3);
+}
+
+#khop-select {
+  background: rgba(20, 20, 40, 0.8);
+  color: #e0e0e0;
+  border: 1px solid rgba(68, 136, 255, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+#time-controls label {
+  font-size: 12px;
+  color: #888;
+}
+
 #time-slider {
   width: 300px;
   accent-color: #4488ff;

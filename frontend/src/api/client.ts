@@ -1,4 +1,4 @@
-import type { EntityDetail, Snapshot } from "../types";
+import type { EntityDetail, Neighborhood, Snapshot } from "../types";
 
 const BASE = "/api";
 
@@ -18,4 +18,10 @@ export function getSnapshot(t: number): Promise<Snapshot> {
 export function getEntity(id: string, t?: number): Promise<EntityDetail> {
   const params = t !== undefined ? `?t=${t}` : "";
   return fetchJSON<EntityDetail>(`${BASE}/entity/${encodeURIComponent(id)}${params}`);
+}
+
+export function getNeighbors(id: string, t: number, k: number = 1): Promise<Neighborhood> {
+  return fetchJSON<Neighborhood>(
+    `${BASE}/neighbors?id=${encodeURIComponent(id)}&t=${t}&k=${k}`,
+  );
 }

@@ -49,5 +49,18 @@ class EntityDetailOut(BaseModel):
     activity: dict | None = None
 
 
+class NeighborEdge(BaseModel):
+    from_id: str
+    to_id: str
+    amount: float
+
+
+class NeighborhoodOut(BaseModel):
+    center_id: str
+    k: int
+    nodes: list[SnapshotNode]
+    edges: list[NeighborEdge]
+
+
 class ErrorOut(BaseModel):
     detail: str

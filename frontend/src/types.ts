@@ -47,3 +47,10 @@ export interface EntityDetail {
     out_sum: number;
   } | null;
 }
+
+export interface Neighborhood {
+  center_id: string;
+  k: number;
+  nodes: SnapshotNode[];
+  edges: SnapshotEdge[];
+}

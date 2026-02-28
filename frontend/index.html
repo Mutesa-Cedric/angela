@@ -8,10 +8,17 @@
   <body>
     <canvas id="scene-canvas"></canvas>
 
-    <!-- Time slider -->
+    <!-- Time slider + k-hop control -->
     <div id="time-controls">
       <span id="time-label">Bucket 0</span>
       <input type="range" id="time-slider" min="0" max="0" value="0" />
+      <span class="control-divider"></span>
+      <label for="khop-select">Hops</label>
+      <select id="khop-select">
+        <option value="1" selected>1-hop</option>
+        <option value="2">2-hop</option>
+        <option value="3">3-hop</option>
+      </select>
     </div>
 
     <!-- Entity detail panel -->

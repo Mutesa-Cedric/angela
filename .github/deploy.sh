@@ -20,9 +20,11 @@ export ANGELA_DATA_DIR="${DATA_DIR}"
 export ANGELA_LOGS_DIR="${LOGS_DIR}"
 export ANGELA_HOST_PORT="${HOST_PORT:-3000}"
 
-# Copy env file if provided and it's not already .env
-if [ -f "$ENV_FILE" ] && [ "$ENV_FILE" != ".env" ]; then
-    cp "$ENV_FILE" .env
+# Copy env file if provided (skip if same file)
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+    if ! cmp -s "$ENV_FILE" .env 2>/dev/null; then
+        cp "$ENV_FILE" .env
+    fi
 fi
 
 # Build and deploy with docker-compose (includes postgres, backend, frontend)

@@ -368,6 +368,35 @@ async def invoke(
     else:
         message_text = str(result)
 
+    # Fetch actual high-risk entities to populate the response
+    risk_data = store.risk_by_bucket.get(bucket, {})
+    scored = [
+        {
+            "entity_id": eid,
+            "risk_score": data["risk_score"],
+            "top_reason": data["reasons"][0]["detail"] if data.get("reasons") else "Elevated risk",
+        }
+        for eid, data in risk_data.items()
+        if data["risk_score"] > 0.3
+    ]
+    scored.sort(key=lambda x: x["risk_score"], reverse=True)
+    top_entities = scored[:10]
+
+    entity_ids = [e["entity_id"] for e in top_entities]
+    highlights = [
+        {
+            "entity_id": e["entity_id"],
+            "risk_score": e["risk_score"],
+            "top_reason": e["top_reason"],
+            "summary": "",
+        }
+        for e in top_entities
+    ]
+
+    avg_risk = sum(e["risk_score"] for e in top_entities) / len(top_entities) if top_entities else 0.0
+    high_risk_count = len([e for e in top_entities if e["risk_score"] >= 0.5])
+    top_entity_id = top_entities[0]["entity_id"] if top_entities else None
+
     # Return structure compatible with AgentInvestigateResult interface
     return {
         "run_id": session_id,
@@ -380,16 +409,16 @@ async def invoke(
         "interpretation": query,
         "engine": "bedrock_agentcore",
         "research": {
-            "entity_ids": [],
-            "summary": "Strands Agent investigation completed.",
-            "total_targets_found": 0,
+            "entity_ids": entity_ids,
+            "summary": f"Found {len(entity_ids)} high-risk entities in bucket {bucket}.",
+            "total_targets_found": len(entity_ids),
         },
         "analysis": {
-            "top_entity_id": None,
-            "average_risk": 0.0,
-            "high_risk_count": 0,
-            "detector_counts": {},
-            "highlights": [],
+            "top_entity_id": top_entity_id,
+            "average_risk": avg_risk,
+            "high_risk_count": high_risk_count,
+            "detector_counts": {"bedrock_agentcore": len(entity_ids)},
+            "highlights": highlights,
         },
         "reporting": {
             "narrative": message_text,

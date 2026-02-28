@@ -18,33 +18,10 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
 
-      - name: Create deploy script
-        env:
-          PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
-          DATA_DIR: ${{ secrets.DATA_DIR }}
-          LOGS_DIR: ${{ secrets.LOGS_DIR }}
-          CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
-          HOST_PORT: ${{ secrets.HOST_PORT }}
-          ENV_FILE: ${{ secrets.ENV_FILE }}
+      - name: Copy deploy script to VPS
         run: |
-          cat > /tmp/deploy.sh << SCRIPT
-          #!/bin/bash
-          set -e
-          cd ${PROJECT_DIR}
-          git pull origin main
-          cd backend
-          mkdir -p ${DATA_DIR}
-          mkdir -p ${LOGS_DIR}
-          docker build -t ${CONTAINER_NAME} .
-          docker stop ${CONTAINER_NAME} || true
-          docker rm ${CONTAINER_NAME} || true
-          docker run -d -p ${HOST_PORT}:8000 -v ${DATA_DIR}:/app/data -v ${LOGS_DIR}:/app/logs --env-file ${ENV_FILE} --name ${CONTAINER_NAME} --restart unless-stopped ${CONTAINER_NAME}
-          SCRIPT
+          scp -i ~/.ssh/deploy_key .github/deploy.sh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/tmp/deploy.sh
 
-      - name: Deploy to VPS
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+      - name: Run deploy on VPS
         run: |
-          scp -i ~/.ssh/deploy_key /tmp/deploy.sh ${VPS_USERNAME}@${VPS_HOST}:/tmp/deploy.sh
-          ssh -i ~/.ssh/deploy_key ${VPS_USERNAME}@${VPS_HOST} "bash /tmp/deploy.sh"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "bash /tmp/deploy.sh '${{ secrets.PROJECT_DIR }}' '${{ secrets.DATA_DIR }}' '${{ secrets.LOGS_DIR }}' '${{ secrets.CONTAINER_NAME }}' '${{ secrets.HOST_PORT }}' '${{ secrets.ENV_FILE }}'"

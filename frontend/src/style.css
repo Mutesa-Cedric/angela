@@ -189,3 +189,18 @@ body {
   color: #666;
   font-size: 12px;
 }
+
+.ai-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(68, 136, 255, 0.2);
+}
+
+.ai-summary {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c8d0e0;
+  background: rgba(68, 136, 255, 0.08);
+  border-radius: 6px;
+  padding: 10px 12px;
+}

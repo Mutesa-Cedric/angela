@@ -1,9 +1,11 @@
+import json
 import random
 from collections import deque
 from enum import Enum
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from .ai.service import generate_entity_summary
 from .clusters import detect_clusters
 from .data_loader import store
 from .models import (
@@ -316,4 +318,40 @@ async def inject_anomaly(
         "target_entity": target_id,
         "injected_count": len(injected_tx),
         "clusters_found": len(clusters),
+    }
+
+
+# --- AI Copilot ---
+
+@router.get("/ai/explain/entity/{entity_id}")
+async def ai_explain_entity(
+    entity_id: str,
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+
+    entity = store.get_entity(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Entity '{entity_id}' not found")
+
+    risk = store.get_entity_risk(t, entity_id)
+    activity = store.get_entity_activity(t, entity_id)
+
+    summary = generate_entity_summary(
+        entity_id=entity_id,
+        risk_score=risk["risk_score"],
+        reasons_key=json.dumps(risk["reasons"], sort_keys=True),
+        evidence_key=json.dumps(risk["evidence"], sort_keys=True),
+        activity_key=json.dumps(activity, sort_keys=True) if activity else "null",
+        bucket=t,
+    )
+
+    return {
+        "entity_id": entity_id,
+        "bucket": t,
+        "summary": summary,
     }

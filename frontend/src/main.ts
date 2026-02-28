@@ -2,7 +2,7 @@ import "./style.css";
 import { initScene } from "./scene";
 import { NodeLayer } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
-import { getSnapshot, getEntity, getNeighbors } from "./api/client";
+import { getSnapshot, getEntity, getNeighbors, getAIExplanation } from "./api/client";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
 import { wsClient } from "./api/ws";
@@ -87,6 +87,11 @@ async function selectEntity(entityId: string | null): Promise<void> {
       loadNeighborEdges(entityId, currentSnapshot.meta.t, currentK),
     ]);
     panel.show(detail);
+
+    // Fire AI summary asynchronously — don't block panel
+    getAIExplanation(entityId, currentSnapshot.meta.t)
+      .then((res) => panel.setAISummary(res.summary))
+      .catch(() => panel.setAISummary("AI summary unavailable."));
   } catch (err) {
     console.error("Failed to load entity:", err);
     panel.hide();

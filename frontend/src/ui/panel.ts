@@ -51,7 +51,19 @@ export function show(entity: EntityDetail): void {
     ${activityHTML}
     <h3>Risk Signals</h3>
     ${reasonsHTML}
+    <div class="ai-section">
+      <h3>AI Analysis</h3>
+      <div id="ai-summary" class="ai-summary muted">Loading AI summary...</div>
+    </div>
   `;
+}
+
+export function setAISummary(summary: string): void {
+  const el = document.getElementById("ai-summary");
+  if (el) {
+    el.textContent = summary;
+    el.classList.remove("muted");
+  }
 }
 
 export function hide(): void {

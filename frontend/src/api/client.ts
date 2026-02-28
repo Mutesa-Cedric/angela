@@ -25,3 +25,7 @@ export function getNeighbors(id: string, t: number, k: number = 1): Promise<Neig
     `${BASE}/neighbors?id=${encodeURIComponent(id)}&t=${t}&k=${k}`,
   );
 }
+
+export function getAIExplanation(id: string, t: number): Promise<{ entity_id: string; bucket: number; summary: string }> {
+  return fetchJSON(`${BASE}/ai/explain/entity/${encodeURIComponent(id)}?t=${t}`);
+}

@@ -796,6 +796,16 @@ function setAgentStatus(text: string, tone: "info" | "ok" | "warn" | "error" = "
   agentStatus.dataset.tone = tone;
 }
 
+function setAgentRunId(runId: string | null): void {
+  if (!runId) {
+    agentRunId.textContent = "";
+    agentRunId.title = "";
+    return;
+  }
+  agentRunId.textContent = `run ${runId.slice(0, 8)}`;
+  agentRunId.title = runId;
+}
+
 function setAgentRunning(running: boolean): void {
   agentRequestRunning = running;
   agentSubmit.classList.toggle("running", running);
@@ -968,7 +978,7 @@ function handleAgentEvent(event: string, data: Record<string, unknown>): void {
     if (!activeAgentRunId) {
       if (!agentRequestRunning) return;
       activeAgentRunId = runId;
-      agentRunId.textContent = runId;
+      setAgentRunId(runId);
     } else if (runId !== activeAgentRunId) {
       return;
     }
@@ -1026,7 +1036,7 @@ async function runAgentFlow(): Promise<void> {
   const profile = (agentProfile.value || "balanced") as AgentProfile;
 
   activeAgentRunId = null;
-  agentRunId.textContent = "";
+  setAgentRunId(null);
   setAgentSummaryMarkdown("**Agentic run in progress.** The graph stays interactive while the supervisor coordinates specialist agents.");
   agentMetrics.textContent = "Bootstrapping orchestration graph...";
   agentTopEntities.innerHTML = "";
@@ -1054,7 +1064,7 @@ async function runAgentFlow(): Promise<void> {
     if (requestSeq !== agentRequestSeq) return;
 
     activeAgentRunId = result.run_id;
-    agentRunId.textContent = result.run_id;
+    setAgentRunId(result.run_id);
     setAgentVisualState("completed");
     setAgentStatus("Run completed. Briefing package is ready.", "ok");
     setAgentStepStatus("intake", "completed");
@@ -1155,7 +1165,7 @@ function clearNLQ(): void {
   nlqClear.style.display = "none";
   nlqInput.value = "";
   activeAgentRunId = null;
-  agentRunId.textContent = "";
+  setAgentRunId(null);
   setAgentSummaryMarkdown("Cleared. Select a preset or type a new query.");
   agentMetrics.textContent = "";
   agentTopEntities.innerHTML = "";

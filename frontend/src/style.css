@@ -2768,18 +2768,7 @@ body.pitch-mode #scene-canvas {
 }
 
 #agent-result::after {
-  content: attr(data-active-step);
-  position: absolute;
-  right: 10px;
-  top: 8px;
-  font-size: 9px;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: rgba(176, 206, 255, 0.86);
-  opacity: 0;
-  transform: translateY(-4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  pointer-events: none;
+  content: none;
 }
 
 #agent-result[data-state="running"] {
@@ -2791,11 +2780,6 @@ body.pitch-mode #scene-canvas {
 #agent-result[data-state="running"]::before {
   opacity: 0.9;
   animation: agent-run-scan 2.8s linear infinite;
-}
-
-#agent-result[data-state="running"]::after {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 #agent-result[data-state="completed"] {
@@ -2829,6 +2813,7 @@ body.pitch-mode #scene-canvas {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 #agent-progress-track {
@@ -2922,6 +2907,12 @@ body.pitch-mode #scene-canvas {
   color: #778;
   font-family: monospace;
   font-size: 10px;
+  min-width: 0;
+  max-width: 46%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
 }
 
 #agent-steps {
@@ -3240,10 +3231,6 @@ body.pitch-mode #agent-result {
 
 body.pitch-mode #agent-result[data-state="running"] {
   box-shadow: 0 0 30px rgba(68, 136, 255, 0.24), 0 0 34px rgba(255, 204, 68, 0.14);
-}
-
-body.pitch-mode #agent-result[data-state="running"]::after {
-  color: rgba(212, 232, 255, 0.95);
 }
 
 body.pitch-mode #autopilot-btn,

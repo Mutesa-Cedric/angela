@@ -1,3 +1,5 @@
 anthropic>=0.79.0
 fastapi>=0.115.0
+numpy>=1.26.0
+trimesh>=4.0.0
 uvicorn[standard]>=0.32.0

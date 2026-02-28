@@ -8,6 +8,7 @@ export interface SceneContext {
   controls: OrbitControls;
   raycaster: THREE.Raycaster;
   pointer: THREE.Vector2;
+  onFrame: (cb: () => void) => void;
 }
 
 export function initScene(canvas: HTMLCanvasElement): SceneContext {
@@ -56,13 +57,20 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  // Per-frame callbacks
+  const frameCallbacks: (() => void)[] = [];
+
   // Animation loop
   function animate(): void {
     requestAnimationFrame(animate);
     controls.update();
+    for (const cb of frameCallbacks) cb();
     renderer.render(scene, camera);
   }
   animate();
 
-  return { scene, camera, renderer, controls, raycaster, pointer };
+  return {
+    scene, camera, renderer, controls, raycaster, pointer,
+    onFrame: (cb: () => void) => frameCallbacks.push(cb),
+  };
 }

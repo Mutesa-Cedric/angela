@@ -2,6 +2,7 @@ import "./style.css";
 import { initScene } from "./scene";
 import { NodeLayer } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
+import { AssetLayer } from "./graph/AssetLayer";
 import { getSnapshot, getEntity, getNeighbors, getAIExplanation } from "./api/client";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
@@ -15,6 +16,7 @@ const ctx = initScene(canvas);
 const nodeLayer = new NodeLayer(5000);
 ctx.scene.add(nodeLayer.mesh);
 const edgeLayer = new EdgeLayer(ctx.scene);
+const assetLayer = new AssetLayer(ctx.scene);
 
 let currentSnapshot: Snapshot | null = null;
 let selectedId: string | null = null;
@@ -36,6 +38,7 @@ async function loadBucket(t: number): Promise<void> {
     currentSnapshot = await getSnapshot(t);
     nodeLayer.update(currentSnapshot.nodes);
     edgeLayer.clear();
+    assetLayer.clear();
 
     // Restore selection if entity still exists in this bucket
     if (selectedId) {
@@ -146,7 +149,77 @@ wsClient.onEvent((event, data) => {
   if (event === "CLUSTER_DETECTED") {
     console.log("Cluster detected:", data);
   }
+
+  // --- Asset hot-loading ---
+  if (event === "ASSET_READY" && currentSnapshot) {
+    const assetData = data as {
+      asset_id: string;
+      asset_type: "cluster_blob" | "beacon";
+      bucket: number;
+      url: string;
+    };
+    if (assetData.bucket !== currentSnapshot.meta.t) return;
+
+    // Determine entity IDs for positioning
+    const entityIds = getAssetEntityIds(assetData.asset_id);
+    assetLayer.loadGLB(
+      assetData.asset_id,
+      assetData.url,
+      assetData.asset_type,
+      entityIds,
+      assetData.bucket,
+      nodeLayer,
+    );
+  }
+
+  if (event === "ASSET_FALLBACK" && currentSnapshot) {
+    const fallback = data as {
+      asset_id: string;
+      asset_type: "cluster_blob" | "beacon";
+      bucket: number;
+      entity_ids?: string[];
+      entity_id?: string;
+      risk_score: number;
+    };
+    if (fallback.bucket !== currentSnapshot.meta.t) return;
+
+    const entityIds = fallback.entity_ids ?? (fallback.entity_id ? [fallback.entity_id] : []);
+    assetLayer.addFallback(
+      fallback.asset_id,
+      fallback.asset_type,
+      entityIds,
+      fallback.bucket,
+      nodeLayer,
+    );
+  }
 });
+
+/** Resolve entity IDs for an asset (from recent CLUSTER_DETECTED events or single beacon). */
+const recentClusters = new Map<string, string[]>();
+
+// Capture cluster entity_ids from CLUSTER_DETECTED events
+wsClient.onEvent((event, data) => {
+  if (event === "CLUSTER_DETECTED") {
+    const cluster = data as { cluster_id: string; entity_ids: string[] };
+    recentClusters.set(cluster.cluster_id, cluster.entity_ids);
+  }
+});
+
+function getAssetEntityIds(assetId: string): string[] {
+  // Check if it's a cluster
+  const clusterIds = recentClusters.get(assetId);
+  if (clusterIds) return clusterIds;
+
+  // Beacon: extract entity ID from "beacon_{entityId}"
+  if (assetId.startsWith("beacon_")) {
+    return [assetId.slice("beacon_".length)];
+  }
+
+  return [];
+}
+
+// --- Asset pulse animation ---
+ctx.onFrame(() => assetLayer.animate());
 
 // --- Init ---
 
@@ -167,5 +240,6 @@ if (import.meta.env.DEV) {
     ctx,
     nodeLayer,
     edgeLayer,
+    assetLayer,
   };
 }

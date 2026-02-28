@@ -4,8 +4,11 @@ from collections import deque
 from enum import Enum
 
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 
 from .ai.service import generate_entity_summary
+from .assets.generator import ASSETS_DIR
+from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
 from .data_loader import store
 from .models import (
@@ -311,6 +314,19 @@ async def inject_anomaly(
             **cluster,
         })
 
+    # Generate GLB assets for detected clusters
+    assets_generated = 0
+    for cluster in clusters:
+        result = await handle_cluster_asset(cluster, t, manager.broadcast)
+        if result:
+            assets_generated += 1
+
+    # Generate beacon for the injected high-risk entity
+    target_risk = store.risk_by_bucket[t].get(target_id, {}).get("risk_score", 0)
+    if target_risk > 0.5:
+        await handle_beacon_asset(target_id, target_risk, t, manager.broadcast)
+        assets_generated += 1
+
     return {
         "status": "injected",
         "pattern": pattern.value,
@@ -318,7 +334,18 @@ async def inject_anomaly(
         "target_entity": target_id,
         "injected_count": len(injected_tx),
         "clusters_found": len(clusters),
+        "assets_generated": assets_generated,
     }
+
+
+# --- Asset Serving ---
+
+@router.get("/assets/{filename}")
+async def get_asset(filename: str) -> FileResponse:
+    path = ASSETS_DIR / filename
+    if not path.exists() or not path.suffix == ".glb":
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(path, media_type="model/gltf-binary")
 
 
 # --- AI Copilot ---

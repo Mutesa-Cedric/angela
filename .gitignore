@@ -1,0 +1,37 @@
+# Docs (local only, not committed)
+docs/
+
+# Data & Assets (never commit)
+data/raw/
+backend/assets/
+*.glb
+*.gltf
+*.bin
+*.csv
+*.zip
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

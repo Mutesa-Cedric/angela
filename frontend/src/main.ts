@@ -412,7 +412,7 @@ const dashboardBtn = document.getElementById("dashboard-btn") as HTMLButtonEleme
 
 dashboard.onToggle((open) => {
   dashboardBtn.classList.toggle("active", open);
-  dashboardBtn.textContent = open ? "GRAPH" : "EXEC";
+  dashboardBtn.textContent = open ? "EXEC ON" : "EXEC";
 });
 
 dashboardBtn.addEventListener("click", () => {

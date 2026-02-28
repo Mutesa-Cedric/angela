@@ -719,34 +719,49 @@ body.pitch-mode #scene-canvas {
 /* ===== Executive Dashboard ===== */
 #dashboard-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(6, 6, 16, 0.96);
-  backdrop-filter: blur(12px);
+  inset: 0;
   z-index: 50;
-  overflow-y: auto;
-  padding: 20px 40px;
+  pointer-events: none;
   display: none;
 }
 
 #dashboard-overlay.open {
-  display: block;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 30px 14px;
+}
+
+#dash-panel {
+  width: min(900px, 62vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(170, 102, 255, 0.28);
+  background: linear-gradient(
+    165deg,
+    rgba(8, 10, 24, 0.74) 0%,
+    rgba(10, 12, 28, 0.66) 55%,
+    rgba(12, 15, 32, 0.62) 100%
+  );
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36);
+  pointer-events: auto;
 }
 
 #dash-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 #dash-header h2 {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   color: #e0e8f0;
-  letter-spacing: 2px;
+  letter-spacing: 1.4px;
 }
 
 #dash-close {
@@ -764,20 +779,20 @@ body.pitch-mode #scene-canvas {
 .dash-kpis {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  margin-bottom: 28px;
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .dash-kpi {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 20px;
+  padding: 14px;
   text-align: center;
 }
 
 .dash-kpi-value {
-  font-size: 36px;
+  font-size: 28px;
   font-weight: 800;
   font-family: monospace;
   margin-bottom: 4px;
@@ -800,15 +815,19 @@ body.pitch-mode #scene-canvas {
 .dash-charts {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dash-charts .dash-chart-panel:first-child {
+  grid-column: 1 / -1;
 }
 
 .dash-chart-panel {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .dash-chart-panel h3 {
@@ -866,11 +885,11 @@ body.pitch-mode #scene-canvas {
 }
 
 .dash-summary-section {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  padding: 20px;
-  margin-bottom: 20px;
+  padding: 14px;
+  margin-bottom: 8px;
 }
 
 .dash-summary-section h3 {
@@ -883,8 +902,8 @@ body.pitch-mode #scene-canvas {
 }
 
 .dash-summary {
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.55;
   color: #c8d0e0;
 }
 
@@ -900,6 +919,32 @@ body.pitch-mode #scene-canvas {
   color: #ff5544;
   font-size: 14px;
   padding: 40px 0;
+}
+
+@media (max-width: 1200px) {
+  #dash-panel {
+    width: min(820px, 72vw);
+  }
+
+  .dash-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  #dashboard-overlay.open {
+    padding: 18px 8px;
+  }
+
+  #dash-panel {
+    width: 100%;
+    border-radius: 10px;
+    padding: 12px;
+  }
+
+  .dash-charts {
+    grid-template-columns: 1fr;
+  }
 }
 
 #dashboard-btn {

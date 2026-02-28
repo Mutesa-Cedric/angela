@@ -109,8 +109,22 @@ function drawTrendChart(
   if (!canvas) return;
 
   const ctx = canvas.getContext("2d")!;
-  const w = canvas.width;
-  const h = canvas.height;
+  const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+  const cssWidth = Math.max(500, Math.round(canvas.clientWidth || 500));
+  const cssHeight = 220;
+  const targetWidth = cssWidth * dpr;
+  const targetHeight = cssHeight * dpr;
+
+  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    canvas.style.height = `${cssHeight}px`;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const w = cssWidth;
+  const h = cssHeight;
   const padding = { top: 10, right: 10, bottom: 25, left: 40 };
 
   ctx.clearRect(0, 0, w, h);

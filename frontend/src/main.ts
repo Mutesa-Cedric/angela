@@ -28,29 +28,18 @@ import { addAxisLabels } from "./ui/axisLabels";
 import { wsClient } from "./api/ws";
 import { Autopilot } from "./camera/Autopilot";
 import * as dashboard from "./ui/dashboard";
-import { ENTITY_LINK_EVENT, renderMarkdownInto } from "./ui/markdown";
+import * as agentPanel from "./ui/agentPanel";
+import { ENTITY_LINK_EVENT } from "./ui/markdown";
 import type { EntityDetail, Neighborhood, Snapshot, SnapshotNode } from "./types";
-import { SkyboxLayer } from "./skybox";
 import { AmbientAudioController, type AmbientAudioState } from "./ambientAudio";
 
 const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
 if (!canvas) throw new Error("Canvas element #scene-canvas not found");
 
-const skyboxFaces = [
-  new URL("../media/right.png", import.meta.url).href,
-  new URL("../media/left.png", import.meta.url).href,
-  new URL("../media/middle.png", import.meta.url).href,
-  new URL("../media/bottom.png", import.meta.url).href,
-  new URL("../media/front.png", import.meta.url).href,
-  new URL("../media/back.png", import.meta.url).href,
-] as const;
 const ambienceIntroUrl = new URL("../media/angela_track_intro.ogg", import.meta.url).href;
 const ambienceLoopUrl = new URL("../media/angela_track_loop.ogg", import.meta.url).href;
 
 const ctx = initScene(canvas);
-const skybox = new SkyboxLayer(ctx.scene, {
-  faces: skyboxFaces,
-});
 const ambience = new AmbientAudioController({
   introUrl: ambienceIntroUrl,
   loopUrl: ambienceLoopUrl,
@@ -68,7 +57,6 @@ let pitchModeEnabled = false;
 function applyPitchMode(enabled: boolean): void {
   pitchModeEnabled = enabled;
   document.body.classList.toggle("pitch-mode", enabled);
-  skybox.setPitchMode(enabled);
   ambience.setPitchMode(enabled);
 
   if (enabled) {
@@ -77,7 +65,7 @@ function applyPitchMode(enabled: boolean): void {
     ctx.bloomPass.threshold = Math.max(0.66, baseBloomThreshold - 0.06);
     ctx.renderer.toneMappingExposure = baseExposure * 1.15;
     if (sceneFog) {
-      sceneFog.density = Math.max(0.010, baseFogDensity * 0.9);
+      sceneFog.density = Math.max(0.001, baseFogDensity * 0.8);
     }
   } else {
     ctx.bloomPass.strength = baseBloomStrength;
@@ -92,8 +80,8 @@ function applyPitchMode(enabled: boolean): void {
   const pitchBtn = document.getElementById("pitch-mode-btn") as HTMLButtonElement | null;
   if (pitchBtn) {
     pitchBtn.classList.toggle("active", enabled);
-    pitchBtn.textContent = enabled ? "PITCH ON" : "PITCH";
-    pitchBtn.title = enabled ? "Disable cinematic pitch mode (Shift+P)" : "Enable cinematic pitch mode (Shift+P)";
+    pitchBtn.textContent = enabled ? "PRESENT ON" : "PRESENT";
+    pitchBtn.title = enabled ? "Disable presentation mode (Shift+P)" : "Enable presentation mode (Shift+P)";
   }
 
   try {
@@ -173,7 +161,7 @@ function getRiskScoreMap(snapshot: Snapshot): Map<string, number> {
   return riskScores;
 }
 
-// K-hop control
+// Connection depth control
 const khopSelect = document.getElementById("khop-select") as HTMLSelectElement;
 khopSelect.addEventListener("change", () => {
   currentK = parseInt(khopSelect.value, 10);
@@ -190,30 +178,49 @@ document.getElementById("cam-focus")!.addEventListener("click", () => {
   camera.focusEntity(ctx, nodeLayer, selectedId);
 });
 
-// --- Legend collapse/expand ---
+// --- Sidebar accordion ---
 
-const legend = document.getElementById("legend") as HTMLDivElement | null;
-const legendToggleBtn = document.getElementById("legend-toggle-btn") as HTMLButtonElement | null;
-const legendSubtitle = document.getElementById("legend-subtitle") as HTMLDivElement | null;
-
-function applyLegendCollapsed(collapsed: boolean): void {
-  if (!legend || !legendToggleBtn) return;
-  legend.classList.toggle("collapsed", collapsed);
-  legendToggleBtn.title = collapsed ? "Expand visual guide" : "Minimize visual guide";
-  legendToggleBtn.setAttribute("aria-label", collapsed ? "Expand visual guide" : "Minimize visual guide");
-  legendToggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  if (legendSubtitle) {
-    legendSubtitle.textContent = collapsed ? "Visual Guide (Minimized)" : "Visual Guide";
-  }
-}
-
-if (legend && legendToggleBtn) {
-  legendToggleBtn.addEventListener("click", () => {
-    applyLegendCollapsed(!legend.classList.contains("collapsed"));
+for (const header of Array.from(document.querySelectorAll<HTMLButtonElement>(".sb-section-header"))) {
+  header.addEventListener("click", () => {
+    const section = header.parentElement;
+    if (!section) return;
+    const isCollapsed = section.classList.toggle("collapsed");
+    header.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
   });
-  // Start fully expanded for first-time viewers and judges.
-  applyLegendCollapsed(false);
 }
+
+// Dashboard section starts collapsed
+const sbDashboard = document.getElementById("sb-dashboard");
+if (sbDashboard) {
+  sbDashboard.classList.add("collapsed");
+}
+
+// --- Legend popover ---
+
+const legendTrigger = document.getElementById("legend-trigger") as HTMLButtonElement | null;
+const legendPopover = document.getElementById("legend-popover") as HTMLDivElement | null;
+const legendPopoverClose = document.getElementById("legend-popover-close") as HTMLButtonElement | null;
+
+if (legendTrigger && legendPopover) {
+  legendTrigger.addEventListener("click", () => {
+    legendPopover.classList.toggle("hidden");
+  });
+  legendPopoverClose?.addEventListener("click", () => {
+    legendPopover.classList.add("hidden");
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (
+      !legendPopover.classList.contains("hidden") &&
+      !legendPopover.contains(e.target as Node) &&
+      e.target !== legendTrigger
+    ) {
+      legendPopover.classList.add("hidden");
+    }
+  });
+}
+
+// --- Panel tabs ---
+panel.initTabs();
 
 // --- Data loading ---
 
@@ -392,8 +399,9 @@ async function selectEntity(entityId: string | null): Promise<void> {
 // --- Node picking ---
 
 canvas.addEventListener("pointerdown", (e) => {
-  ctx.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-  ctx.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  const rect = canvas.getBoundingClientRect();
+  ctx.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  ctx.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
   ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera);
   const hits = ctx.raycaster.intersectObjects(nodeLayer.allMeshes, false);
@@ -540,8 +548,9 @@ document.body.appendChild(tooltip);
 let hoveredId: string | null = null;
 
 canvas.addEventListener("pointermove", (e) => {
-  ctx.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-  ctx.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  const rect = canvas.getBoundingClientRect();
+  ctx.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  ctx.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera);
   const hits = ctx.raycaster.intersectObjects(nodeLayer.allMeshes, false);
 
@@ -583,18 +592,18 @@ function renderAmbienceButton(state: AmbientAudioState): void {
   ambienceBtn.classList.toggle("ducked", state.enabled && state.voiceoverActive);
 
   if (!state.enabled) {
-    ambienceBtn.textContent = "MUSIC";
-    ambienceBtn.title = "Enable soft ambience (Shift+M)";
+    ambienceBtn.textContent = "AMBIENCE";
+    ambienceBtn.title = "Enable ambient audio (Shift+M)";
     return;
   }
 
   if (!state.ready) {
-    ambienceBtn.textContent = "MUSIC ARM";
-    ambienceBtn.title = "Click to unlock soft ambience audio (Shift+M)";
+    ambienceBtn.textContent = "AMBIENCE ARM";
+    ambienceBtn.title = "Click to unlock ambient audio (Shift+M)";
     return;
   }
 
-  ambienceBtn.textContent = state.voiceoverActive ? "MUSIC DUCK" : "MUSIC ON";
+  ambienceBtn.textContent = state.voiceoverActive ? "AMBIENCE DUCK" : "AMBIENCE ON";
   ambienceBtn.title = state.voiceoverActive
     ? "Ambience ducked for voice-over compatibility (Shift+M)"
     : "Disable soft ambience (Shift+M)";
@@ -606,7 +615,7 @@ ambienceBtn.addEventListener("click", () => {
 });
 
 autopilot.onState((state) => {
-  autopilotBtn.textContent = state === "running" ? "STOP" : "AUTOPILOT";
+  autopilotBtn.textContent = state === "running" ? "STOP TOUR" : "GUIDED TOUR";
   autopilotBtn.classList.toggle("running", state === "running");
   ambience.setAutopilotActive(state === "running");
 });
@@ -622,7 +631,7 @@ const dashboardBtn = document.getElementById("dashboard-btn") as HTMLButtonEleme
 
 dashboard.onToggle((open) => {
   dashboardBtn.classList.toggle("active", open);
-  dashboardBtn.textContent = open ? "GRAPH" : "EXEC";
+  dashboardBtn.textContent = open ? "Close Dashboard" : "Open Full Dashboard";
 });
 
 dashboardBtn.addEventListener("click", () => {
@@ -660,39 +669,12 @@ const agentPresets = document.getElementById("agent-presets") as HTMLDivElement;
 const agentIncludeSar = document.getElementById("agent-include-sar") as HTMLInputElement;
 const agentMaxTargets = document.getElementById("agent-max-targets") as HTMLSelectElement;
 const agentProfile = document.getElementById("agent-profile") as HTMLSelectElement;
-const agentResult = document.getElementById("agent-result") as HTMLDivElement;
-const agentStatus = document.getElementById("agent-status") as HTMLSpanElement;
-const agentRunId = document.getElementById("agent-run-id") as HTMLSpanElement;
-const agentCollapseToggle = document.getElementById("agent-collapse-toggle") as HTMLButtonElement;
-const agentProgressFill = document.getElementById("agent-progress-fill") as HTMLDivElement;
-const agentSteps = document.getElementById("agent-steps") as HTMLDivElement;
-const agentMetrics = document.getElementById("agent-metrics") as HTMLDivElement;
-const agentTopEntities = document.getElementById("agent-top-entities") as HTMLDivElement;
-const agentSummary = document.getElementById("agent-summary") as HTMLDivElement;
+const agentMiniResult = document.getElementById("agent-result-mini") as HTMLDivElement;
+const agentMiniState = document.getElementById("agent-mini-state") as HTMLSpanElement;
+const agentMiniOpen = document.getElementById("agent-mini-open") as HTMLButtonElement;
 const agentHistory = document.getElementById("agent-history") as HTMLDivElement;
 
-type AgentStepStatus = "pending" | "running" | "completed" | "failed";
 type AgentProfile = "fast" | "balanced" | "deep";
-type AgentVisualState = "idle" | "running" | "completed" | "failed" | "aborted";
-const AGENT_STEP_ORDER = ["intake", "research", "analysis", "reporting"] as const;
-const AGENT_STEP_META: Record<(typeof AGENT_STEP_ORDER)[number], { label: string; cue: string }> = {
-  intake: {
-    label: "Intake",
-    cue: "Parsing objective and extracting intent.",
-  },
-  research: {
-    label: "Research",
-    cue: "Traversing flows and ranking candidate entities.",
-  },
-  analysis: {
-    label: "Analysis",
-    cue: "Scoring risk patterns and triaging top signals.",
-  },
-  reporting: {
-    label: "Reporting",
-    cue: "Drafting investigator briefing and SAR context.",
-  },
-};
 
 let nlqAbortController: AbortController | null = null;
 let nlqRequestSeq = 0;
@@ -701,13 +683,6 @@ let agentRequestRunning = false;
 let agentRequestSeq = 0;
 let activeAgentRunId: string | null = null;
 let agentRunSummaries: AgentRunSummary[] = [];
-let agentStepState: Record<string, AgentStepStatus> = {
-  intake: "pending",
-  research: "pending",
-  analysis: "pending",
-  reporting: "pending",
-};
-
 const FALLBACK_AGENT_PRESETS: {
   id: string;
   label: string;
@@ -716,144 +691,24 @@ const FALLBACK_AGENT_PRESETS: {
   include_sar: boolean;
   max_targets: number;
 }[] = [
-  {
-    id: "high-risk",
-    label: "High Risk Entities",
-    query: "show high risk entities",
-    profile: "balanced",
-    include_sar: false,
-    max_targets: 5,
-  },
-  {
-    id: "large-incoming",
-    label: "Large Incoming Flows",
-    query: "show entities receiving large transaction volumes",
-    profile: "balanced",
-    include_sar: true,
-    max_targets: 3,
-  },
-  {
-    id: "structuring",
-    label: "Structuring Patterns",
-    query: "find structuring near threshold transactions",
-    profile: "deep",
-    include_sar: true,
-    max_targets: 5,
-  },
+  { id: "high-risk", label: "High Risk Entities", query: "show high risk entities", profile: "balanced", include_sar: false, max_targets: 5 },
+  { id: "large-incoming", label: "Large Incoming Flows", query: "show entities receiving large transaction volumes", profile: "balanced", include_sar: true, max_targets: 3 },
+  { id: "structuring", label: "Structuring Patterns", query: "find structuring near threshold transactions", profile: "deep", include_sar: true, max_targets: 5 },
 ];
 
 function isAbortError(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
 
-function setAgentProgress(progressPct: number): void {
-  const clamped = Math.max(0, Math.min(100, progressPct));
-  agentProgressFill.style.width = `${clamped}%`;
-  agentResult.dataset.progress = String(Math.round(clamped));
-}
-
-function computeAgentProgress(): number {
-  const total = AGENT_STEP_ORDER.length;
-  const completed = AGENT_STEP_ORDER.filter((name) => agentStepState[name] === "completed").length;
-  const hasRunning = AGENT_STEP_ORDER.some((name) => agentStepState[name] === "running");
-  let pct = (completed / total) * 100;
-  if (hasRunning && completed < total) pct += 100 / (total * 2);
-  return Math.round(Math.min(99, pct));
-}
-
-function setAgentVisualState(state: AgentVisualState): void {
-  agentResult.dataset.state = state;
-  document.body.classList.toggle("agent-run-live", state === "running");
-}
-
-function resetAgentSteps(): void {
-  agentStepState = {
-    intake: "pending",
-    research: "pending",
-    analysis: "pending",
-    reporting: "pending",
-  };
-  agentResult.dataset.activeStep = "";
-  setAgentVisualState("idle");
-  renderAgentSteps();
-  setAgentProgress(0);
-}
-
-function renderAgentSteps(): void {
-  agentSteps.innerHTML = AGENT_STEP_ORDER
-    .map((name, idx) => {
-      const status = agentStepState[name] ?? "pending";
-      const meta = AGENT_STEP_META[name];
-      return `<span class="agent-step-pill ${status}" data-step="${name}" data-status="${status}" title="${meta.cue}">
-        <span class="agent-step-index">${idx + 1}</span>
-        <span class="agent-step-name">${meta.label}</span>
-      </span>`;
-    })
-    .join("");
-}
-
-function setAgentStatus(text: string, tone: "info" | "ok" | "warn" | "error" = "info"): void {
-  agentStatus.textContent = text;
-  agentStatus.dataset.tone = tone;
-}
-
-function setAgentRunId(runId: string | null): void {
-  if (!runId) {
-    agentRunId.textContent = "";
-    agentRunId.title = "";
-    return;
-  }
-  agentRunId.textContent = `run ${runId.slice(0, 8)}`;
-  agentRunId.title = runId;
-}
-
-function setAgentCollapsed(collapsed: boolean): void {
-  agentResult.dataset.collapsed = collapsed ? "1" : "0";
-  agentCollapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-  agentCollapseToggle.title = collapsed ? "Expand agent details" : "Collapse agent details";
-  agentCollapseToggle.setAttribute("aria-label", collapsed ? "Expand agent details" : "Collapse agent details");
-}
-
 function setAgentRunning(running: boolean): void {
   agentRequestRunning = running;
   agentSubmit.classList.toggle("running", running);
-  agentSubmit.textContent = running ? "CANCEL" : "AGENT";
-  agentSubmit.title = running ? "Cancel client wait for this run" : "Run multi-agent investigation";
+  agentSubmit.textContent = running ? "CANCEL" : "INVESTIGATE";
+  agentSubmit.title = running ? "Cancel client wait" : "Run multi-agent investigation";
   agentIncludeSar.disabled = running;
   agentMaxTargets.disabled = running;
   agentProfile.disabled = running;
   nlqBar.classList.toggle("agent-running", running);
-  agentStatus.dataset.live = running ? "1" : "0";
-  agentMetrics.classList.toggle("live", running);
-  if (running) {
-    setAgentCollapsed(false);
-    setAgentVisualState("running");
-  } else if (agentResult.dataset.state === "running") {
-    setAgentVisualState("idle");
-    agentResult.dataset.activeStep = "";
-  }
-}
-
-function setAgentStepStatus(agent: string, status: AgentStepStatus): void {
-  if (!Object.prototype.hasOwnProperty.call(agentStepState, agent)) return;
-  agentStepState[agent] = status;
-  const typedAgent = agent as (typeof AGENT_STEP_ORDER)[number];
-  const meta = AGENT_STEP_META[typedAgent];
-  if (status === "running") {
-    agentResult.dataset.activeStep = `${meta.label} | ${meta.cue}`;
-    agentMetrics.textContent = meta.cue;
-  } else if (status === "failed") {
-    agentResult.dataset.activeStep = `${meta.label} | FAILED`;
-    setAgentVisualState("failed");
-  } else if (!AGENT_STEP_ORDER.some((name) => agentStepState[name] === "running")) {
-    agentResult.dataset.activeStep = "";
-  }
-  renderAgentSteps();
-  setAgentProgress(computeAgentProgress());
-}
-
-function setAgentSummaryMarkdown(markdown: string): void {
-  renderMarkdownInto(agentSummary, markdown || "No report content yet.");
 }
 
 function applyAgentGraphResult(result: AgentInvestigateResult): void {
@@ -884,34 +739,6 @@ function applyAgentGraphResult(result: AgentInvestigateResult): void {
   }
 }
 
-function renderAgentTopEntities(result: AgentInvestigateResult): void {
-  const highlights = result.analysis.highlights ?? [];
-  const fallbackIds = result.research.entity_ids ?? [];
-  if (highlights.length === 0 && fallbackIds.length === 0) {
-    agentTopEntities.innerHTML = "";
-    return;
-  }
-
-  const items = (highlights.length > 0
-    ? highlights.slice(0, 5).map((h) => ({
-      entity_id: h.entity_id,
-      label: `${h.entity_id} (${Math.round((h.risk_score ?? 0) * 100)}%)`,
-    }))
-    : fallbackIds.slice(0, 5).map((id) => ({ entity_id: id, label: id })));
-
-  agentTopEntities.innerHTML = items
-    .map((item) => `<button class="agent-entity-chip" data-entity-id="${item.entity_id}">${item.label}</button>`)
-    .join("");
-
-  for (const btn of Array.from(agentTopEntities.querySelectorAll<HTMLButtonElement>(".agent-entity-chip"))) {
-    btn.addEventListener("click", () => {
-      const entityId = btn.dataset.entityId;
-      if (!entityId) return;
-      void selectEntity(entityId);
-    });
-  }
-}
-
 function renderAgentHistory(): void {
   if (agentRunSummaries.length === 0) {
     agentHistory.innerHTML = "";
@@ -935,7 +762,6 @@ function renderAgentHistory(): void {
       if (!run) return;
       nlqInput.value = run.query;
       agentProfile.value = run.profile;
-      setAgentStatus(`Loaded run context: ${run.status.toUpperCase()} (${run.run_id.slice(0, 8)})`, "info");
     });
   }
 }
@@ -965,7 +791,6 @@ function renderAgentPresets(
       agentProfile.value = preset.profile;
       agentIncludeSar.checked = preset.include_sar;
       agentMaxTargets.value = String(preset.max_targets);
-      setAgentStatus(`Preset loaded: ${preset.label}`, "info");
     });
   }
 }
@@ -987,7 +812,7 @@ function handleAgentEvent(event: string, data: Record<string, unknown>): void {
     if (!activeAgentRunId) {
       if (!agentRequestRunning) return;
       activeAgentRunId = runId;
-      setAgentRunId(runId);
+      agentPanel.setRunId(runId);
     } else if (runId !== activeAgentRunId) {
       return;
     }
@@ -996,37 +821,32 @@ function handleAgentEvent(event: string, data: Record<string, unknown>): void {
   }
 
   if (event === "AGENT_RUN_STARTED") {
-    agentResult.style.display = "flex";
-    setAgentVisualState("running");
-    setAgentProgress(4);
-    setAgentStatus("Run started. Specialist agents are coming online...", "info");
-    agentMetrics.textContent = "Supervisor: dispatching intake -> research -> analysis -> reporting.";
+    agentPanel.updateStep("intake", "running", "Supervisor dispatching specialist agents...");
     return;
   }
 
   if (event === "AGENT_STEP") {
     const agent = typeof data.agent === "string" ? data.agent : "";
     const status = typeof data.status === "string" ? data.status : "";
+    const detail = typeof data.detail === "string" ? data.detail : "";
     if (agent && (status === "running" || status === "completed" || status === "failed")) {
-      setAgentStepStatus(agent, status as AgentStepStatus);
-    }
-    if (typeof data.detail === "string") {
-      setAgentStatus(data.detail, status === "failed" ? "error" : "info");
+      agentPanel.updateStep(
+        agent as "intake" | "research" | "analysis" | "reporting",
+        status as "running" | "completed" | "failed",
+        detail,
+      );
     }
     return;
   }
 
   if (event === "AGENT_RUN_COMPLETED") {
-    setAgentVisualState("completed");
-    setAgentProgress(100);
-    setAgentStatus("Run completed. Briefing package is ready.", "ok");
-    return;
+    return; // Result applied from HTTP response in runAgentFlow
   }
 
   if (event === "AGENT_RUN_FAILED") {
-    setAgentVisualState("failed");
     const errMsg = typeof data.error === "string" ? data.error : "Agent run failed.";
-    setAgentStatus(errMsg, "error");
+    agentPanel.setError(errMsg);
+    agentMiniState.textContent = "Failed";
   }
 }
 
@@ -1044,50 +864,39 @@ async function runAgentFlow(): Promise<void> {
   const maxTargets = Number(agentMaxTargets.value || "5");
   const profile = (agentProfile.value || "balanced") as AgentProfile;
 
+  // Open the dedicated agent panel
   activeAgentRunId = null;
-  setAgentRunId(null);
-  setAgentSummaryMarkdown("**Agentic run in progress.** The graph stays interactive while the supervisor coordinates specialist agents.");
-  agentMetrics.textContent = "Bootstrapping orchestration graph...";
-  agentTopEntities.innerHTML = "";
-  agentResult.style.display = "flex";
-  resetAgentSteps();
-  setAgentProgress(5);
-  setAgentStatus("Submitting run request...", "info");
+  agentPanel.reset();
+  agentPanel.show(query);
+  agentPanel.updateStep("intake", "running", "Submitting investigation request...");
   setAgentRunning(true);
+
+  // Update sidebar mini indicator
+  agentMiniResult.style.display = "block";
+  agentMiniState.textContent = "Running...";
 
   const requestSeq = ++agentRequestSeq;
   agentAbortController = new AbortController();
 
   try {
     const result = await runAgentInvestigation(
-      {
-        query,
-        bucket,
-        include_sar: includeSar,
-        max_targets: maxTargets,
-        profile,
-      },
+      { query, bucket, include_sar: includeSar, max_targets: maxTargets, profile },
       agentAbortController.signal,
     );
 
     if (requestSeq !== agentRequestSeq) return;
 
     activeAgentRunId = result.run_id;
-    setAgentRunId(result.run_id);
-    setAgentVisualState("completed");
-    setAgentStatus("Run completed. Briefing package is ready.", "ok");
-    setAgentStepStatus("intake", "completed");
-    setAgentStepStatus("research", "completed");
-    setAgentStepStatus("analysis", "completed");
-    setAgentStepStatus("reporting", "completed");
-    setAgentProgress(100);
+    agentPanel.setRunId(result.run_id);
+    agentPanel.updateStep("intake", "completed");
+    agentPanel.updateStep("research", "completed");
+    agentPanel.updateStep("analysis", "completed");
+    agentPanel.updateStep("reporting", "completed");
+    agentPanel.setResult(result);
 
-    const reportText = result.reporting?.narrative ?? "";
-    const sarSuffix = result.reporting?.sar ? "\n\n**SAR:** Draft generated for top entity." : "";
-    setAgentSummaryMarkdown(`${reportText}${sarSuffix}`);
-    agentMetrics.textContent = `${result.profile.toUpperCase()} profile • ${result.research.total_targets_found} candidates • ${result.analysis.high_risk_count} high-risk selected • avg risk ${Math.round(result.analysis.average_risk * 100)}%`;
-    renderAgentTopEntities(result);
+    agentMiniState.textContent = "Completed";
 
+    // NLQ bar updates
     nlqInterpretation.textContent = result.interpretation || result.intent;
     nlqSummary.textContent = result.research?.summary || "Agent run completed.";
     nlqResult.style.display = "flex";
@@ -1098,18 +907,13 @@ async function runAgentFlow(): Promise<void> {
   } catch (err) {
     if (requestSeq !== agentRequestSeq) return;
     if (isAbortError(err)) {
-      setAgentVisualState("aborted");
-      setAgentStatus("Client wait canceled. Server run may still complete.", "warn");
-      setAgentSummaryMarkdown("You can still retrieve the run from `/api/agent/runs`.");
-      setAgentProgress(computeAgentProgress());
-      await refreshAgentHistory();
+      agentPanel.setError("Client wait canceled. Server run may still complete.");
+      agentMiniState.textContent = "Canceled";
     } else {
-      setAgentVisualState("failed");
-      setAgentStatus("Run failed.", "error");
-      setAgentSummaryMarkdown(err instanceof Error ? err.message : "Unknown error");
-      setAgentProgress(computeAgentProgress());
-      await refreshAgentHistory();
+      agentPanel.setError(err instanceof Error ? err.message : "Unknown error");
+      agentMiniState.textContent = "Failed";
     }
+    await refreshAgentHistory();
   } finally {
     if (requestSeq !== agentRequestSeq) return;
     setAgentRunning(false);
@@ -1174,13 +978,10 @@ function clearNLQ(): void {
   nlqClear.style.display = "none";
   nlqInput.value = "";
   activeAgentRunId = null;
-  setAgentRunId(null);
-  setAgentSummaryMarkdown("Cleared. Select a preset or type a new query.");
-  agentMetrics.textContent = "";
-  agentTopEntities.innerHTML = "";
-  agentResult.style.display = "flex";
-  resetAgentSteps();
-  setAgentStatus("Idle");
+  agentPanel.reset();
+  agentPanel.hide();
+  agentMiniResult.style.display = "none";
+  agentMiniState.textContent = "";
   setAgentRunning(false);
 
   // Restore edges for selected entity if any
@@ -1189,17 +990,32 @@ function clearNLQ(): void {
   }
 }
 
-resetAgentSteps();
-setAgentStatus("Idle");
-setAgentProgress(0);
-setAgentCollapsed(false);
+// Wire agent panel callbacks
+agentPanel.initCallbacks({
+  onFocusGraph: (entityIds) => {
+    if (entityIds.length > 0) {
+      nodeLayer.highlight(entityIds);
+      if (entityIds[0]) void selectEntity(entityIds[0]);
+    }
+    agentPanel.hide();
+  },
+  onRetry: () => { runAgentFlow(); },
+  onSar: (entityId) => {
+    if (currentSnapshot) {
+      import("./ui/sarPanel").then((sarPanel) => {
+        sarPanel.generate(entityId, currentSnapshot!.meta.t);
+      });
+    }
+  },
+});
+
+agentMiniOpen.addEventListener("click", () => {
+  const panelEl = document.getElementById("agent-panel");
+  if (panelEl) panelEl.classList.add("open");
+});
 
 nlqSubmit.addEventListener("click", () => runNLQ());
 agentSubmit.addEventListener("click", () => runAgentFlow());
-agentCollapseToggle.addEventListener("click", () => {
-  const collapsed = agentResult.dataset.collapsed === "1";
-  setAgentCollapsed(!collapsed);
-});
 nlqInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
     runAgentFlow();
@@ -1217,8 +1033,7 @@ ctx.onFrame(() => {
   const dt = (now - lastFrameTime) / 1000;
   lastFrameTime = now;
 
-  skybox.tick(dt);
-  nodeLayer.animate(dt);
+  nodeLayer.animate(dt, ctx.camera);
   clusterLayer.animate();
   autopilot.tick(dt);
   assetLayer.animate();
@@ -1231,7 +1046,6 @@ ctx.onFrame(() => {
 const reuploadBtn = document.getElementById("reupload-btn") as HTMLButtonElement;
 reuploadBtn.addEventListener("click", () => {
   wizard.show();
-  reuploadBtn.style.display = "none";
 });
 
 // --- Init ---
@@ -1251,14 +1065,9 @@ async function startGraph(preloaded?: Snapshot): Promise<void> {
   nodeLayer.update(snapshot.nodes);
   stats.updateCounts(snapshot.nodes.length, snapshot.edges.length);
 
-  // Show graph UI
+  // Show graph UI (sidebar, nav, status bar are always-visible in new layout)
+  document.body.classList.add("graph-loaded");
   reuploadBtn.style.display = "block";
-  document.getElementById("time-controls")!.style.display = "flex";
-  document.getElementById("legend")!.style.display = "block";
-  document.getElementById("camera-presets")!.style.display = "flex";
-  document.getElementById("stats-overlay")!.style.display = "flex";
-  document.getElementById("action-bar")!.style.display = "flex";
-  document.getElementById("nlq-bar")!.style.display = "flex";
 
   // Connect WebSocket
   wsClient.connect();
@@ -1275,13 +1084,8 @@ wizard.onLoaded((snapshot) => {
 });
 
 async function init(): Promise<void> {
-  // Hide graph UI initially
-  document.getElementById("time-controls")!.style.display = "none";
-  document.getElementById("legend")!.style.display = "none";
-  document.getElementById("camera-presets")!.style.display = "none";
-  document.getElementById("stats-overlay")!.style.display = "none";
-  document.getElementById("action-bar")!.style.display = "none";
-  document.getElementById("nlq-bar")!.style.display = "none";
+  // Hide graph UI initially — sidebar/nav hidden until data is loaded
+  document.body.classList.remove("graph-loaded");
 
   // Pitch mode defaults on for demos; can be toggled off manually.
   applyPitchMode(true);

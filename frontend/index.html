@@ -7,9 +7,347 @@
     <title>ANGELA</title>
   </head>
   <body>
-    <canvas id="scene-canvas"></canvas>
+    <!-- ═══ Top Navigation Bar ═══ -->
+    <nav id="top-nav">
+      <div class="nav-brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">ANGELA</span>
+        <span class="brand-separator">│</span>
+        <span class="brand-context">INTELLIGENCE WORKSPACE</span>
+      </div>
 
-    <!-- Wizard -->
+      <div id="nlq-bar">
+        <div id="nlq-input-row">
+          <input
+            type="text"
+            id="nlq-input"
+            placeholder="Search entities, query patterns..."
+            autocomplete="off"
+            title="Natural-language query. Example: show entities receiving large transaction volumes."
+          />
+          <button id="nlq-submit" title="Run a fast query on the current time window.">QUERY</button>
+          <button id="agent-submit" title="Run full multi-agent investigation (intake, research, analysis, reporting).">INVESTIGATE</button>
+          <button id="nlq-clear" title="Clear highlights" style="display:none">CLEAR</button>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <button id="reupload-btn" title="Import new dataset">IMPORT</button>
+        <button id="pitch-mode-btn" title="Presentation mode">PRESENT</button>
+      </div>
+    </nav>
+
+    <!-- ═══ Left Sidebar ═══ -->
+    <aside id="sidebar">
+      <div id="sidebar-scroll">
+
+        <!-- Section: Controls -->
+        <div class="sb-section" id="sb-controls">
+          <button class="sb-section-header" aria-expanded="true">
+            <span class="sb-section-icon">◈</span>
+            <span>CONTROLS</span>
+            <span class="sb-chevron">▾</span>
+          </button>
+          <div class="sb-section-body">
+            <!-- Time controls -->
+            <div class="sb-control-group">
+              <div class="sb-control-label">TIME WINDOW</div>
+              <div id="time-controls">
+                <span id="time-label">Window 1</span>
+                <input type="range" id="time-slider" min="0" max="0" value="0" title="Scrub across time windows." />
+              </div>
+            </div>
+
+            <div class="sb-control-group">
+              <div class="sb-control-label">CONNECTION DEPTH</div>
+              <select id="khop-select" title="How many steps from the selected entity to show.">
+                <option value="1" selected>1 step</option>
+                <option value="2">2 steps</option>
+                <option value="3">3 steps</option>
+              </select>
+            </div>
+
+            <!-- Agent controls -->
+            <div class="sb-control-group">
+              <div class="sb-control-label">INVESTIGATION SETTINGS</div>
+              <div id="agent-controls">
+                <label class="agent-control">
+                  <input type="checkbox" id="agent-include-sar" />
+                  Include SAR
+                </label>
+                <label class="agent-control">
+                  Targets
+                  <select id="agent-max-targets" title="Max entities for analysis.">
+                    <option value="3">3</option>
+                    <option value="5" selected>5</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                  </select>
+                </label>
+                <label class="agent-control">
+                  Profile
+                  <select id="agent-profile" title="Fast = speed, Balanced = default, Deep = richest analysis.">
+                    <option value="fast">Fast</option>
+                    <option value="balanced" selected>Balanced</option>
+                    <option value="deep">Deep</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <!-- Agent presets -->
+            <div class="sb-control-group">
+              <div class="sb-control-label">QUICK INVESTIGATIONS</div>
+              <div id="agent-presets"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Investigations -->
+        <div class="sb-section" id="sb-investigations">
+          <button class="sb-section-header" aria-expanded="true">
+            <span class="sb-section-icon">▶</span>
+            <span>INVESTIGATIONS</span>
+            <span class="sb-chevron">▾</span>
+          </button>
+          <div class="sb-section-body">
+            <!-- NLQ Result -->
+            <div id="nlq-result" style="display:none">
+              <div id="nlq-result-header">
+                <span id="nlq-interpretation"></span>
+                <button
+                  id="agent-collapse-toggle"
+                  class="panel-collapse-toggle"
+                  type="button"
+                  title="Collapse details"
+                  aria-label="Collapse details"
+                  aria-expanded="true"
+                >▾</button>
+              </div>
+              <span id="nlq-summary"></span>
+            </div>
+
+            <!-- Agent Result (compact sidebar indicator) -->
+            <div id="agent-result-mini" style="display:none">
+              <div class="agent-mini-status">
+                <span id="agent-mini-state"></span>
+                <button id="agent-mini-open" class="agent-mini-open-btn" title="Open investigation panel">OPEN PANEL</button>
+              </div>
+            </div>
+            <div id="agent-history"></div>
+          </div>
+        </div>
+
+        <!-- Section: Dashboard -->
+        <div class="sb-section" id="sb-dashboard">
+          <button class="sb-section-header" aria-expanded="false">
+            <span class="sb-section-icon">▦</span>
+            <span>DASHBOARD</span>
+            <span class="sb-chevron">▾</span>
+          </button>
+          <div class="sb-section-body collapsed">
+            <button id="dashboard-btn" class="sb-action-btn" title="Open executive dashboard.">Open Full Dashboard</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar footer actions -->
+      <div id="sidebar-footer">
+        <button id="autopilot-btn" title="Cinematic investigation tour.">GUIDED TOUR</button>
+        <button id="ambience-btn" title="Toggle ambient audio.">AMBIENCE</button>
+      </div>
+    </aside>
+
+    <!-- ═══ Main Viewport ═══ -->
+    <main id="viewport">
+      <canvas id="scene-canvas"></canvas>
+      <div id="cluster-labels"></div>
+      <div id="autopilot-overlay"></div>
+
+      <!-- Viewport overlay controls -->
+      <div id="viewport-overlay">
+        <div id="viewport-top-right">
+          <button id="legend-trigger" title="Visual encoding guide">? LEGEND</button>
+          <div id="camera-presets">
+            <button id="cam-overview" title="Overview: wide framing across all lanes.">OVERVIEW</button>
+            <button id="cam-top" title="Top-down: best for spotting clusters.">TOP-DOWN</button>
+            <button id="cam-focus" title="Focus: center on selected entity.">FOCUS</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Legend popover -->
+      <div id="legend-popover" class="hidden">
+        <div class="popover-header">
+          <span class="popover-title">VISUAL GUIDE</span>
+          <button id="legend-popover-close" class="popover-close">&times;</button>
+        </div>
+        <div id="legend" title="Visual decoder for node shape, color, glow, axes, and edge encoding.">
+          <div class="legend-callout" title="First-pass triage cue.">
+            Prioritize nodes that are <strong>higher, brighter, and connected by thicker edges</strong>.
+          </div>
+          <div class="legend-section">
+            <div class="legend-section-label" title="Entity types mapped to shapes.">Node Shape</div>
+            <div class="legend-row" title="Spheres represent account-like entities.">
+              <span class="legend-swatch legend-account"></span>
+              <span class="legend-text"><span class="legend-label">Account</span><span class="legend-desc">Personal or standard account.</span></span>
+            </div>
+            <div class="legend-row" title="Boxes represent merchant and company entities.">
+              <span class="legend-swatch legend-company"></span>
+              <span class="legend-text"><span class="legend-label">Merchant / Company</span><span class="legend-desc">Commercial counterparties.</span></span>
+            </div>
+            <div class="legend-row" title="Diamonds represent bank and government entities.">
+              <span class="legend-swatch legend-diamond"></span>
+              <span class="legend-text"><span class="legend-label">Bank / Gov</span><span class="legend-desc">Institutional entities.</span></span>
+            </div>
+          </div>
+          <div class="legend-divider"></div>
+          <div class="legend-section">
+            <div class="legend-section-label" title="Visual channels used in risk encoding.">Encoding</div>
+            <div class="legend-row">
+              <span class="legend-size-scale"><span class="legend-size-dot sm"></span><span class="legend-size-dot md"></span><span class="legend-size-dot lg"></span></span>
+              <span class="legend-text"><span class="legend-label">Size = Volume</span><span class="legend-desc">Larger = more activity.</span></span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-jurisdiction-bar"></span>
+              <span class="legend-text"><span class="legend-label">Color = Jurisdiction</span><span class="legend-desc">Region-based grouping.</span></span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-glow-icon"></span>
+              <span class="legend-text"><span class="legend-label">Glow = Risk Level</span><span class="legend-desc">Brighter = higher risk.</span></span>
+            </div>
+            <div class="legend-row">
+              <span class="legend-swatch legend-selected"></span>
+              <span class="legend-text"><span class="legend-label">Selected</span><span class="legend-desc">Currently focused entity.</span></span>
+            </div>
+          </div>
+          <div class="legend-divider"></div>
+          <div class="legend-section">
+            <div class="legend-section-label">Axes</div>
+            <div class="legend-row"><span class="legend-icon">Y</span><span class="legend-text"><span class="legend-label">Height = Risk Score</span></span></div>
+            <div class="legend-row"><span class="legend-icon">X</span><span class="legend-text"><span class="legend-label">Lane = Jurisdiction</span></span></div>
+            <div class="legend-row"><span class="legend-icon">Z</span><span class="legend-text"><span class="legend-label">Depth = KYC Level</span></span></div>
+          </div>
+          <div class="legend-divider"></div>
+          <div class="legend-section">
+            <div class="legend-section-label">Edges</div>
+            <div class="legend-row"><span class="legend-gradient"></span><span class="legend-text"><span class="legend-label">Color = Risk + Flow</span></span></div>
+            <div class="legend-row"><span class="legend-icon">━</span><span class="legend-text"><span class="legend-label">Width = Amount</span></span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ═══ Right Detail Panel (Entity + SAR) ═══ -->
+    <aside id="entity-panel">
+      <div id="panel-header">
+        <h2>Entity Detail</h2>
+        <button id="panel-close">&times;</button>
+      </div>
+      <div id="panel-tabs">
+        <button class="panel-tab active" data-tab="overview">Overview</button>
+        <button class="panel-tab" data-tab="evidence">Evidence</button>
+        <button class="panel-tab" data-tab="connections">Connections</button>
+        <button class="panel-tab" data-tab="ai">AI</button>
+      </div>
+      <div id="panel-content"></div>
+    </aside>
+
+    <!-- SAR Panel (renders inside detail panel or standalone) -->
+    <div id="sar-panel">
+      <div id="sar-header">
+        <h2>Suspicious Activity Report</h2>
+        <button id="sar-close">&times;</button>
+      </div>
+      <div id="sar-content"></div>
+    </div>
+
+    <!-- ═══ Agent Investigation Panel ═══ -->
+    <div id="agent-panel">
+      <div id="agent-panel-header">
+        <div class="agent-panel-title-row">
+          <span class="agent-panel-icon">&#9670;</span>
+          <h2>INVESTIGATION</h2>
+          <span id="agent-panel-run-id" class="agent-panel-run-id"></span>
+        </div>
+        <button id="agent-panel-close">&times;</button>
+      </div>
+
+      <!-- Processing view (shown during run) -->
+      <div id="agent-panel-processing">
+        <div id="agent-panel-query-bar">
+          <span class="agent-panel-label">QUERY</span>
+          <span id="agent-panel-query-text"></span>
+        </div>
+        <div id="agent-panel-progress-track">
+          <div id="agent-panel-progress-fill"></div>
+        </div>
+        <div id="agent-panel-steps"></div>
+        <div id="agent-panel-live-feed"></div>
+        <div id="agent-panel-elapsed">
+          <span class="agent-panel-label">ELAPSED</span>
+          <span id="agent-panel-timer">0.0s</span>
+        </div>
+      </div>
+
+      <!-- Results view (shown after completion) -->
+      <div id="agent-panel-results" style="display:none">
+        <div id="agent-panel-tabs">
+          <button class="agent-panel-tab active" data-tab="summary">Summary</button>
+          <button class="agent-panel-tab" data-tab="entities">Entities</button>
+          <button class="agent-panel-tab" data-tab="narrative">Narrative</button>
+        </div>
+        <div class="agent-panel-tab-content active" data-tab="summary">
+          <div id="agent-panel-intent"></div>
+          <div id="agent-panel-metrics-grid"></div>
+          <div id="agent-panel-detectors"></div>
+          <div id="agent-panel-research-summary" class="markdown-content"></div>
+        </div>
+        <div class="agent-panel-tab-content" data-tab="entities">
+          <div id="agent-panel-entity-cards"></div>
+        </div>
+        <div class="agent-panel-tab-content" data-tab="narrative">
+          <div id="agent-panel-narrative" class="markdown-content"></div>
+        </div>
+        <div id="agent-panel-actions">
+          <button id="agent-panel-sar-btn" class="agent-panel-btn" style="display:none">Generate SAR</button>
+          <button id="agent-panel-focus-btn" class="agent-panel-btn">Focus on Graph</button>
+          <button id="agent-panel-copy-btn" class="agent-panel-btn agent-panel-btn-secondary">Copy</button>
+        </div>
+      </div>
+
+      <!-- Error view -->
+      <div id="agent-panel-error" style="display:none">
+        <div class="agent-panel-error-icon">!</div>
+        <div id="agent-panel-error-msg"></div>
+        <button id="agent-panel-retry-btn" class="agent-panel-btn">Retry</button>
+      </div>
+    </div>
+
+    <!-- ═══ Dashboard Overlay ═══ -->
+    <div id="dashboard-overlay">
+      <div id="dash-panel">
+        <div id="dash-header">
+          <h2>Executive Dashboard</h2>
+          <button id="dash-close">&times;</button>
+        </div>
+        <div id="dash-content"></div>
+      </div>
+    </div>
+
+    <!-- ═══ Status Bar ═══ -->
+    <footer id="status-bar">
+      <span class="status-live">● LIVE</span>
+      <span class="status-sep">│</span>
+      <span id="stats-fps">-- FPS</span>
+      <span class="status-sep">│</span>
+      <span id="stats-nodes">0 ENTITIES</span>
+      <span class="status-sep">│</span>
+      <span id="stats-edges">0 CONNECTIONS</span>
+    </footer>
+
+    <!-- ═══ Wizard (Full-screen Modal) ═══ -->
     <div id="wizard-backdrop" class="wizard-backdrop"></div>
     <div id="wizard-card" class="wizard-card">
       <!-- Step: Upload form -->
@@ -105,286 +443,6 @@
         </div>
         <div class="seq-subtitle">Intelligence graph online.</div>
       </div>
-    </div>
-
-    <!-- Re-upload button -->
-    <button id="reupload-btn" title="Upload new data">UPLOAD</button>
-
-    <!-- Time slider + k-hop control -->
-    <div id="time-controls" title="Timeline controls: move between time buckets and adjust neighborhood hops.">
-      <span id="time-label" title="Bucket = one time window slice of transaction activity (e.g. hourly/daily depending on dataset).">Bucket 0</span>
-      <input
-        type="range"
-        id="time-slider"
-        min="0"
-        max="0"
-        value="0"
-        title="Scrub across time buckets to replay risk and flow changes over time."
-      />
-      <span class="control-divider"></span>
-      <label for="khop-select" title="Hop depth controls how many connection layers from the selected entity are shown.">Hops</label>
-      <select
-        id="khop-select"
-        title="1-hop = direct neighbors, 2-hop = neighbors-of-neighbors, 3-hop = broader network context."
-      >
-        <option value="1" selected>1-hop</option>
-        <option value="2">2-hop</option>
-        <option value="3">3-hop</option>
-      </select>
-    </div>
-
-    <!-- Entity detail panel -->
-    <div id="entity-panel">
-      <div id="panel-header">
-        <h2>Entity Detail</h2>
-        <button id="panel-close">&times;</button>
-      </div>
-      <div id="panel-content"></div>
-    </div>
-
-    <!-- SAR Panel -->
-    <div id="sar-panel">
-      <div id="sar-header">
-        <h2>SAR Report</h2>
-        <button id="sar-close">&times;</button>
-      </div>
-      <div id="sar-content"></div>
-    </div>
-
-    <!-- Legend -->
-    <div id="legend" title="Visual decoder for node shape, color, glow, axes, and edge encoding.">
-      <div class="legend-head">
-        <div class="legend-head-left">
-          <div class="legend-title" title="How to interpret graph visuals quickly.">ANGELA</div>
-          <div id="legend-subtitle" class="legend-subtitle">Visual Guide</div>
-        </div>
-        <button
-          id="legend-toggle-btn"
-          class="panel-collapse-toggle"
-          type="button"
-          title="Minimize visual guide"
-          aria-label="Minimize visual guide"
-          aria-expanded="true"
-        >
-          ▾
-        </button>
-      </div>
-      <div class="legend-callout" title="First-pass triage cue for judges and first-time users.">
-        Quick read: prioritize nodes that are <strong>higher, brighter, and connected by thicker edges</strong>.
-      </div>
-
-      <div class="legend-section">
-        <div class="legend-section-label" title="Entity types are mapped to shapes.">Node Shape</div>
-        <div class="legend-row" title="Spheres represent account-like entities.">
-          <span class="legend-swatch legend-account"></span>
-          <span class="legend-text">
-            <span class="legend-label">Account</span>
-            <span class="legend-desc">Personal or standard account entity.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Boxes represent merchant and company entities.">
-          <span class="legend-swatch legend-company"></span>
-          <span class="legend-text">
-            <span class="legend-label">Merchant / Company</span>
-            <span class="legend-desc">Commercial counterparties and business entities.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Diamonds represent bank and government entities.">
-          <span class="legend-swatch legend-diamond"></span>
-          <span class="legend-text">
-            <span class="legend-label">Bank / Gov</span>
-            <span class="legend-desc">Institutional and public-sector entities.</span>
-          </span>
-        </div>
-      </div>
-
-      <div class="legend-divider"></div>
-
-      <div class="legend-section">
-        <div class="legend-section-label" title="Visual channels used in risk encoding.">Encoding</div>
-        <div class="legend-row" title="Larger nodes indicate higher transaction volume.">
-          <span class="legend-size-scale">
-            <span class="legend-size-dot sm"></span>
-            <span class="legend-size-dot md"></span>
-            <span class="legend-size-dot lg"></span>
-          </span>
-          <span class="legend-text">
-            <span class="legend-label">Size = Tx Volume</span>
-            <span class="legend-desc">Larger node means more transaction activity in this bucket.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Base node color maps jurisdiction bucket/category.">
-          <span class="legend-jurisdiction-bar"></span>
-          <span class="legend-text">
-            <span class="legend-label">Color = Jurisdiction</span>
-            <span class="legend-desc">Color separates region buckets for side-by-side comparison.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Glow intensity increases with risk score.">
-          <span class="legend-glow-icon"></span>
-          <span class="legend-text">
-            <span class="legend-label">Glow = Risk Level</span>
-            <span class="legend-desc">Brighter glow indicates higher modeled risk.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="White highlight marks the currently selected entity.">
-          <span class="legend-swatch legend-selected"></span>
-          <span class="legend-text">
-            <span class="legend-label">Selected</span>
-            <span class="legend-desc">Current focus entity used for panel details and neighbors.</span>
-          </span>
-        </div>
-      </div>
-
-      <div class="legend-divider"></div>
-
-      <div class="legend-section">
-        <div class="legend-section-label" title="3D layout axes in ANGELA risk space.">Axes</div>
-        <div class="legend-row" title="Y-axis maps risk score: higher = riskier.">
-          <span class="legend-icon">Y</span>
-          <span class="legend-text">
-            <span class="legend-label">Height = Risk Score</span>
-            <span class="legend-desc">Higher vertical position means higher risk.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="X-axis lanes separate jurisdictions for easier comparison.">
-          <span class="legend-icon">X</span>
-          <span class="legend-text">
-            <span class="legend-label">Lane = Jurisdiction</span>
-            <span class="legend-desc">Horizontal lanes group entities by region bucket.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Z-axis depth separates KYC status (standard vs enhanced).">
-          <span class="legend-icon">Z</span>
-          <span class="legend-text">
-            <span class="legend-label">Depth = KYC Level</span>
-            <span class="legend-desc">Depth separates standard and enhanced due-diligence states.</span>
-          </span>
-        </div>
-      </div>
-
-      <div class="legend-divider"></div>
-
-      <div class="legend-section">
-        <div class="legend-section-label" title="Edge appearance conveys amount and risk context.">Edges</div>
-        <div class="legend-row" title="Edge hue follows endpoint risk intensity and flow class.">
-          <span class="legend-gradient"></span>
-          <span class="legend-text">
-            <span class="legend-label">Edge Risk + Flow</span>
-            <span class="legend-desc">Color reflects risk context and flow direction classes.</span>
-          </span>
-        </div>
-        <div class="legend-row" title="Thicker edges represent larger transfer amounts.">
-          <span class="legend-icon">━</span>
-          <span class="legend-text">
-            <span class="legend-label">Width = Amount</span>
-            <span class="legend-desc">Thicker edge means larger transfer value.</span>
-          </span>
-        </div>
-      </div>
-
-      <div class="legend-footer">Tip: click any node to open AI analysis, then increase <strong>Hops</strong> for wider context.</div>
-    </div>
-
-    <!-- Camera presets -->
-    <div id="camera-presets">
-      <button id="cam-overview" title="Overview camera: wide framing across all jurisdiction lanes and KYC depth.">OVERVIEW</button>
-      <button id="cam-top" title="Top-down camera: best for spotting clusters, ring structures, and spread.">TOP-DOWN</button>
-      <button id="cam-focus" title="Focus selected entity: centers camera on the currently selected node.">FOCUS</button>
-    </div>
-
-    <!-- FPS + stats overlay -->
-    <div id="stats-overlay">
-      <span id="stats-fps" title="Rendering frame rate.">-- FPS</span>
-      <span id="stats-nodes" title="Visible node count in current bucket.">0 nodes</span>
-      <span id="stats-edges" title="Visible edge count in current view/query context.">0 edges</span>
-    </div>
-
-    <!-- Dashboard overlay -->
-    <div id="dashboard-overlay">
-      <div id="dash-panel">
-        <div id="dash-header">
-          <h2>Executive Dashboard</h2>
-          <button id="dash-close">&times;</button>
-        </div>
-        <div id="dash-content"></div>
-      </div>
-    </div>
-
-    <!-- NLQ Query Bar -->
-    <div id="nlq-bar">
-      <div id="nlq-input-row">
-        <input
-          type="text"
-          id="nlq-input"
-          placeholder="Ask about the graph... e.g. &quot;show high risk entities&quot;"
-          autocomplete="off"
-          title="Natural-language query box. Example: show entities receiving large transaction volumes."
-        />
-        <button id="nlq-submit" title="Run a fast NLQ parse + graph filter on the current bucket.">GO</button>
-        <button id="agent-submit" title="Run full multi-agent investigation (intake, research, analysis, reporting).">AGENT</button>
-        <button id="nlq-clear" title="Clear highlights" style="display:none">CLEAR</button>
-      </div>
-      <div id="agent-presets" title="One-click investigation starters with tuned query/profile settings."></div>
-      <div id="agent-controls" title="Control depth, target count, and reporting mode for agent runs.">
-        <label class="agent-control" title="Include a generated SAR draft in reporting output.">
-          <input type="checkbox" id="agent-include-sar" />
-          Include SAR
-        </label>
-        <label class="agent-control" title="Maximum number of entities carried into downstream analysis/reporting.">
-          Targets
-          <select id="agent-max-targets" title="Higher target count = broader coverage, slower runs.">
-            <option value="3">3</option>
-            <option value="5" selected>5</option>
-            <option value="8">8</option>
-            <option value="10">10</option>
-          </select>
-        </label>
-        <label class="agent-control" title="Agent profile depth: Fast (quick), Balanced, Deep (richer, slower).">
-          Profile
-          <select id="agent-profile" title="Fast = speed, Balanced = default, Deep = richest analysis and narrative.">
-            <option value="fast">Fast</option>
-            <option value="balanced" selected>Balanced</option>
-            <option value="deep">Deep</option>
-          </select>
-        </label>
-      </div>
-      <div id="nlq-result" style="display:none">
-        <div id="nlq-result-header">
-          <span id="nlq-interpretation"></span>
-          <button
-            id="agent-collapse-toggle"
-            class="panel-collapse-toggle"
-            type="button"
-            title="Collapse agent details"
-            aria-label="Collapse agent details"
-            aria-expanded="true"
-          >
-            ▾
-          </button>
-        </div>
-        <span id="nlq-summary"></span>
-      </div>
-      <div id="agent-result" style="display:none">
-        <div id="agent-status-row">
-          <span id="agent-status">Idle</span>
-          <span id="agent-run-id"></span>
-        </div>
-        <div id="agent-progress-track"><div id="agent-progress-fill"></div></div>
-        <div id="agent-steps"></div>
-        <div id="agent-metrics"></div>
-        <div id="agent-top-entities"></div>
-        <div id="agent-summary" class="markdown-content"></div>
-        <div id="agent-history"></div>
-      </div>
-    </div>
-
-    <!-- Mode buttons -->
-    <div id="action-bar">
-      <button id="dashboard-btn" title="Open executive-level KPI and trend dashboard for the active bucket.">EXEC</button>
-      <button id="autopilot-btn" title="Cinematic AI investigation tour across prioritized targets.">AUTOPILOT</button>
-      <button id="ambience-btn" title="Toggle soft background ambience; auto-ducks for future voice-over.">MUSIC</button>
-      <button id="pitch-mode-btn" title="Toggle dramatic presentation visuals without changing analysis logic.">PITCH</button>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

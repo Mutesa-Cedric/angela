@@ -18,20 +18,24 @@ export interface SceneContext {
 }
 
 export function initScene(canvas: HTMLCanvasElement): SceneContext {
+  const container = canvas.parentElement!;
+  const cw = container.clientWidth || window.innerWidth;
+  const ch = container.clientHeight || window.innerHeight;
+
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(cw, ch);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 0.95;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x060610);
-  // Lighter fog improves depth without obscuring node/edge readability.
-  scene.fog = new THREE.FogExp2(0x0b1020, 0.015);
+  scene.background = new THREE.Color(0x0a0e13);
+  // Gentle fog — at density 0.002, objects at 140 units are still 76% visible.
+  scene.fog = new THREE.FogExp2(0x0a0e13, 0.002);
 
   const camera = new THREE.PerspectiveCamera(
     60,
-    window.innerWidth / window.innerHeight,
+    cw / ch,
     0.1,
     1000,
   );
@@ -46,44 +50,37 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
   controls.maxDistance = 140;
   controls.maxPolarAngle = Math.PI * 0.495;
 
-  // Cinematic lighting
-  const ambient = new THREE.AmbientLight(0x95aacd, 0.62);
+  // Analytical lighting — neutral, even illumination
+  const ambient = new THREE.AmbientLight(0x8899aa, 0.75);
   scene.add(ambient);
 
-  const directional = new THREE.DirectionalLight(0xfff1dc, 0.82);
+  const directional = new THREE.DirectionalLight(0xf0f0f0, 0.65);
   directional.position.set(10, 20, 15);
   scene.add(directional);
 
-  const hemi = new THREE.HemisphereLight(0x8db2de, 0x101828, 0.28);
+  const hemi = new THREE.HemisphereLight(0x8db2de, 0x0a0e13, 0.30);
   scene.add(hemi);
 
-  const fillLight = new THREE.PointLight(0x5fa0ff, 0.62, 70);
+  const fillLight = new THREE.PointLight(0x4a7fbf, 0.45, 70);
   fillLight.position.set(0, 15, 0);
   scene.add(fillLight);
 
-  const rimLight = new THREE.PointLight(0xff8a55, 0.36, 65);
-  rimLight.position.set(-10, 5, -10);
-  scene.add(rimLight);
-
-  // Subtle warm uplight — lifts shadows under the graph
-  const upLight = new THREE.PointLight(0x3f5e88, 0.42, 56);
-  upLight.position.set(0, -5, 0);
-  scene.add(upLight);
-
-  // Ground grid for spatial reference
-  const grid = new THREE.GridHelper(76, 76, 0x314f78, 0x182437);
+  // Ground grid — subtle spatial reference
+  const grid = new THREE.GridHelper(160, 80, 0x151c26, 0x0f1620);
   grid.position.y = -0.1;
+  (grid.material as THREE.Material).opacity = 0.4;
+  (grid.material as THREE.Material).transparent = true;
   scene.add(grid);
 
   // Post-processing: bloom
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  // Selective bloom: high threshold ensures only glow sprites and emissive surfaces bloom
+  // Minimal bloom — analytical, not cinematic
   const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.58, // strength — subtle, cinematic
-    0.65, // radius — wide soft falloff
-    0.82, // threshold — only the brightest surfaces bloom
+    new THREE.Vector2(cw, ch),
+    0.12, // strength — barely perceptible
+    0.4,  // radius — tight
+    0.95, // threshold — only the very brightest pixels
   );
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
@@ -92,13 +89,20 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
 
-  // Resize handler
-  window.addEventListener("resize", () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+  // Resize handler — use ResizeObserver on the canvas container for grid layout
+  function handleResize(): void {
+    const w = container.clientWidth || window.innerWidth;
+    const h = container.clientHeight || window.innerHeight;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
-  });
+    renderer.setSize(w, h);
+    composer.setSize(w, h);
+  }
+
+  const resizeObserver = new ResizeObserver(handleResize);
+  resizeObserver.observe(container);
+  // Also handle window resize as fallback
+  window.addEventListener("resize", handleResize);
 
   // Per-frame callbacks
   const frameCallbacks: (() => void)[] = [];

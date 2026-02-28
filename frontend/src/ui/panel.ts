@@ -73,6 +73,11 @@ function formatSignedCurrency(value: number): string {
   return `${sign}$${Math.abs(value).toLocaleString()}`;
 }
 
+function formatSignedCompactCurrency(value: number): string {
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}${formatCompactCurrency(Math.abs(value))}`;
+}
+
 function formatCompactCurrency(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
@@ -144,6 +149,7 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
     </div>`;
 
   // --- Activity stats ---
+  const netFlow = entity.activity ? entity.activity.in_sum - entity.activity.out_sum : 0;
   const activityHTML = entity.activity
     ? `<div class="activity-section">
         <h3>Activity Snapshot <span class="soft-tip" title="Transaction volume and direction for this entity in the selected time bucket.">?</span></h3>
@@ -161,7 +167,10 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
           </div>
           <div class="activity-card" title="Inbound minus outbound value for this time window.">
             <span class="activity-label">Net Flow</span>
-            <span class="activity-value ${entity.activity.in_sum - entity.activity.out_sum >= 0 ? "activity-net-positive" : "activity-net-negative"}">${formatSignedCurrency(entity.activity.in_sum - entity.activity.out_sum)}</span>
+            <span
+              class="activity-value ${netFlow >= 0 ? "activity-net-positive" : "activity-net-negative"}"
+              title="${formatSignedCurrency(netFlow)}"
+            >${formatSignedCompactCurrency(netFlow)}</span>
             <span class="activity-meta">in - out</span>
           </div>
         </div>

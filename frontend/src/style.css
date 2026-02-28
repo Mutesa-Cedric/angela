@@ -570,6 +570,9 @@ body.pitch-mode #scene-canvas {
   font-family: monospace;
   font-weight: 700;
   color: #e0e8f2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .activity-meta {

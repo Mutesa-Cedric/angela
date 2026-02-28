@@ -5,9 +5,9 @@ set -e
 PROJECT_DIR=$1
 DATA_DIR=$2
 LOGS_DIR=$3
-CONTAINER_NAME=$4
-HOST_PORT=$5
-ENV_FILE=$6
+HOST_PORT=$4
+ENV_FILE=$5
+CONTAINER_NAME="angela-api"
 
 cd "$PROJECT_DIR"
 git pull origin main

@@ -24,4 +24,4 @@ jobs:
 
       - name: Run deploy on VPS
         run: |
-          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "bash /tmp/deploy.sh '${{ secrets.PROJECT_DIR }}' '${{ secrets.DATA_DIR }}' '${{ secrets.LOGS_DIR }}' '${{ secrets.CONTAINER_NAME }}' '${{ secrets.HOST_PORT }}' '${{ secrets.ENV_FILE }}'"
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "bash /tmp/deploy.sh '${{ secrets.PROJECT_DIR }}' '${{ secrets.DATA_DIR }}' '${{ secrets.LOGS_DIR }}' '${{ secrets.HOST_PORT }}' '${{ secrets.ENV_FILE }}'"

@@ -3,6 +3,8 @@ import logging
 from pathlib import Path
 from collections import defaultdict
 
+from .risk.scoring import compute_risk_for_bucket
+
 log = logging.getLogger(__name__)
 
 
@@ -21,6 +23,9 @@ class DataStore:
         self.adjacency: dict[str, set[str]] = defaultdict(set)
         self.n_buckets: int = 0
 
+        # Risk scores per bucket: bucket -> entity_id -> {risk_score, reasons, evidence}
+        self.risk_by_bucket: dict[int, dict[str, dict]] = {}
+
     def load(self, path: Path) -> None:
         """Load snapshot JSON and build runtime indices."""
         log.info(f"Loading data from {path}...")
@@ -36,6 +41,7 @@ class DataStore:
         self.n_buckets = self.metadata.get("n_buckets", 0)
 
         self._build_indices()
+        self._compute_risk()
 
         log.info(
             f"Loaded: {len(self.entities)} entities, "
@@ -54,6 +60,36 @@ class DataStore:
             if tx["from_id"] != tx["to_id"]:
                 self.adjacency[tx["from_id"]].add(tx["to_id"])
                 self.adjacency[tx["to_id"]].add(tx["from_id"])
+
+    def _compute_risk(self) -> None:
+        """Precompute risk scores for all buckets."""
+        bucket_size = self.metadata.get("bucket_size_seconds", 86400)
+        for b in range(self.n_buckets):
+            bucket_tx = self.get_bucket_transactions(b)
+            self.risk_by_bucket[b] = compute_risk_for_bucket(bucket_tx, bucket_size)
+
+        # Log risk distribution
+        all_scores = [
+            r["risk_score"]
+            for bucket_risks in self.risk_by_bucket.values()
+            for r in bucket_risks.values()
+        ]
+        if all_scores:
+            nonzero = [s for s in all_scores if s > 0]
+            log.info(
+                f"Risk computed: {len(all_scores)} entity-buckets, "
+                f"{len(nonzero)} with score > 0, "
+                f"max={max(all_scores):.3f}"
+            )
+
+    def get_entity_risk(self, bucket: int, entity_id: str) -> dict:
+        """Get risk data for an entity in a bucket."""
+        bucket_risks = self.risk_by_bucket.get(bucket, {})
+        return bucket_risks.get(entity_id, {
+            "risk_score": 0.0,
+            "reasons": [],
+            "evidence": {},
+        })
 
     def get_entity(self, entity_id: str) -> dict | None:
         return self.entities_by_id.get(entity_id)

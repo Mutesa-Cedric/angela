@@ -30,12 +30,13 @@ async def get_snapshot(t: int = Query(..., description="Time bucket index")) -> 
     for eid in sorted(active_ids):
         entity = store.get_entity(eid)
         if entity:
+            risk = store.get_entity_risk(t, eid)
             nodes.append(
                 SnapshotNode(
                     id=entity["id"],
                     jurisdiction_bucket=entity["jurisdiction_bucket"],
                     kyc_level=entity["kyc_level"],
-                    risk_score=0.0,  # placeholder until Phase 4
+                    risk_score=risk["risk_score"],
                 )
             )
 
@@ -76,14 +77,16 @@ async def get_entity(
             )
         activity = store.get_entity_activity(t, entity_id)
 
+    risk = store.get_entity_risk(t if t is not None else 0, entity_id)
+
     return EntityDetailOut(
         id=entity["id"],
         type=entity["type"],
         bank=entity["bank"],
         jurisdiction_bucket=entity["jurisdiction_bucket"],
         kyc_level=entity["kyc_level"],
-        risk_score=0.0,  # placeholder until Phase 4
-        reasons=[],  # placeholder
-        evidence={},  # placeholder
+        risk_score=risk["risk_score"],
+        reasons=risk["reasons"],
+        evidence=risk["evidence"],
         activity=activity,
     )

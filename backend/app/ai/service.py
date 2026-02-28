@@ -1,43 +1,50 @@
-"""AI service wrapper for Anthropic Claude."""
+"""AI service wrapper using OpenAI-compatible API."""
 
 import logging
 import os
 from functools import lru_cache
 
-import anthropic
+import openai
 
 from .prompts import SYSTEM_PROMPT, build_entity_prompt, build_cluster_prompt
 
 log = logging.getLogger(__name__)
 
-MODEL = os.getenv("ANGELA_AI_MODEL", "claude-sonnet-4-5-20250929")
+MODEL = os.getenv("ANGELA_AI_MODEL", "gpt-4o-mini")
+BASE_URL = os.getenv("ANGELA_AI_BASE_URL", "https://api.openai.com/v1")
 MAX_TOKENS = 200
 TIMEOUT = 8.0
 
-_client: anthropic.Anthropic | None = None
+_client: openai.OpenAI | None = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> openai.OpenAI:
     global _client
     if _client is None:
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY not set")
-        _client = anthropic.Anthropic(api_key=api_key, timeout=TIMEOUT)
+            raise RuntimeError("OPENAI_API_KEY not set")
+        _client = openai.OpenAI(
+            api_key=api_key,
+            base_url=BASE_URL,
+            timeout=TIMEOUT,
+        )
     return _client
 
 
 def _call_llm(user_prompt: str) -> str:
-    """Call Claude and return the text response."""
+    """Call the LLM and return the text response."""
     client = _get_client()
     try:
-        response = client.messages.create(
+        response = client.chat.completions.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
         )
-        return response.content[0].text
+        return response.choices[0].message.content or ""
     except Exception as e:
         log.warning(f"AI call failed: {e}")
         return "AI summary temporarily unavailable."

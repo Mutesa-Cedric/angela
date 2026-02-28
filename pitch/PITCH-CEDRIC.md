@@ -2,22 +2,19 @@
 
 **Round:** Final round (F2F at HKUST) -- 3-minute presentation + 3-minute Q&A with judges.
 
-**Your job:** Deliver a live demo that proves everything wyli pitched in the elevator round. You have double the time and can interact with the app. The Q&A follows immediately -- prepared answers are at the bottom.
+### For the final round (3 min): Live demo sequence
 
----
-
-## What You're Presenting To
-
-Same tracks: **Main Awards** + **Ingram Micro & AWS Agentic AI Champion**.
-
-| Track | Criteria |
-|-------|----------|
-| **Main Awards** | Novelty, AI/ML Techniques, Impact, Tech Quality, Presentation |
-| **AWS Agentic AI** | Business Value (#1 tiebreaker!), AWS Implementation, Innovation |
-
-**The final round is where you PROVE IT with a live demo.** The elevator pitch made promises. You deliver receipts.
-
----
+| Time | Action | What judges see | Criteria |
+|------|--------|----------------|----------|
+| 0:00-0:20 | Problem + market context | Speaker over static 3D graph | M3, M5, A1, H4 |
+| 0:20-0:40 | Walk the 3D viz: rotate, explain spatial encoding | Risk=height, jurisdiction=lanes, clusters glowing | M1, M5, A3, H1 |
+| 0:40-1:00 | **LIVE: Inject structuring anomaly** | Entity rises, cluster forms, beacon appears | M1, M2, M5 |
+| 1:00-1:40 | **LIVE: Type NLQ "find structuring patterns"** | Agent steps stream in real time on screen | M2, A2, A3, H3 |
+| 1:40-2:00 | **LIVE: Show investigation briefing** | Ranked entities, AI summaries, evidence | M2, M5, A1 |
+| 2:00-2:20 | **LIVE: Generate SAR on top entity** | Full narrative appears in panel | M3, A1, H2, H4 |
+| 2:20-2:35 | **LIVE: Click "What If?" counterfactual** | Risk drops from 0.82 → 0.15, removed edges shown | M1, M2, A1 |
+| 2:35-2:50 | Technical depth: 14 techniques, 3 detectors, Bedrock | Architecture summary | M2, M4, A2, H3 |
+| 2:50-3:00 | Close: competitive moat, path forward | Confident ending | A1, H2, M5 |
 
 ## Your 3-Minute Script with Live Demo
 
@@ -88,53 +85,3 @@ Same tracks: **Main Awards** + **Ingram Micro & AWS Agentic AI Champion**.
 - If agent steps are slow: narrate what's happening ("the Analysis Agent is generating a summary via Bedrock right now...")
 - If anything crashes: switch to talking about the architecture and show the 3D graph statically. You can recover.
 
----
-
-## Q&A Prepared Answers
-
-You have 3 minutes of Q&A. Here are the most likely questions from each judging panel.
-
-### From Main Awards judges:
-
-**"How is this different from existing AML tools?"**
-> Existing tools -- Actimize, Featurespace, SAS -- use 2D dashboards, flat rule engines, and manual investigation workflows. ANGELA introduces three differences: 3D spatial intelligence that encodes risk, jurisdiction, and KYC into physical space; a multi-agent agentic investigation system that takes natural language and produces investigator briefings; and a counterfactual explainer that shows not just what the risk is, but why and how it would change. No current commercial product combines these.
-
-**"Can you explain the risk scoring in more detail?"**
-> Three independent detectors. Velocity compares transaction count to population percentiles -- the median and 95th -- so scoring adapts to the dataset. Structuring counts transactions in the nine-to-ten-thousand dollar range, just below the BSA reporting threshold. Circular flow runs depth-limited DFS to find 3-to-4-node cycles. Each produces a zero-to-one score. We fuse them: velocity at 40%, structuring 30%, circular flow 30%. The weights are explicit, auditable, and adjustable. Regulators can see exactly which signal drove the score.
-
-**"How would this scale to a real bank?"**
-> The current architecture uses an in-memory data store for hackathon speed. For production: the data layer swaps to a graph database or time-series store, the risk pipeline parallelizes per-entity, and the frontend already uses GPU instancing -- it renders thousands of nodes at 60fps. The AI layer is Bedrock-native and horizontally scalable. Docker images are ready. The path from demo to deployment is infrastructure, not architecture redesign.
-
-**"What's the false positive rate?"**
-> Traditional systems flag everything above a static threshold -- that's where the 95% comes from. ANGELA's risk fusion is multi-signal: an entity needs elevated velocity AND structuring AND circular flow to score high. The counterfactual layer lets analysts immediately verify whether flagged behavior is the actual driver. We haven't benchmarked on labeled production data yet, but the architecture reduces false positives by fusing orthogonal signals rather than relying on a single rule.
-
-### From AWS/Ingram Micro judges:
-
-**"How specifically are you using Bedrock?"**
-> Bedrock is the backbone of every agentic capability. The AI service layer integrates natively via boto3's bedrock-runtime Converse API. Every LLM call routes through Bedrock: the Intake Agent's intent parsing, the Analysis Agent's entity summarization, the Reporting Agent's SAR narrative generation, the NLQ engine's query parsing, and cluster summarization. That's five distinct agentic use cases on a single Bedrock integration. We also support an OpenAI-compatible fallback -- switching providers is a single environment variable -- but Bedrock is the primary production path. The architecture includes retry logic, graceful fallback on errors, and LRU caching to minimize redundant calls.
-
-**"Who would buy this and how would you monetize?"**
-> Primary buyers: compliance departments at Hong Kong banks and financial institutions. The HKMA requires AML programs -- banks already have compliance budgets. ANGELA sells as SaaS, priced per analyst seat. The SAR automation alone justifies the cost: a compliance analyst costs $50-100K USD annually, and they spend a significant portion of time writing SARs. If ANGELA saves even 20% of that time, the ROI is immediate. Secondary market: regulators who want a real-time view across institutions.
-
-**"Why is this a Hong Kong problem?"**
-> Hong Kong is the gateway between mainland China and global financial markets. Cross-border flows exceed five trillion dollars annually. The JFIU processes over a hundred thousand suspicious transaction reports per year. HKMA has intensified AML enforcement -- banks have been fined millions. ANGELA's jurisdiction-lane visualization and cross-border risk ratio KPI were designed specifically for this cross-jurisdictional topology.
-
-### From HKUST EC judges (if applicable):
-
-**"What's your go-to-market strategy?"**
-> Phase 1: Pilot with one HK bank's compliance team -- we already handle real transaction data formats. Phase 2: Iterate on analyst feedback, integrate with case management systems. Phase 3: SaaS launch targeting mid-tier HK banks. Phase 4: Expand to APAC -- Singapore, Tokyo, Sydney. Docker-ready, provider-agnostic, fast deployment.
-
-**"What's the TAM?"**
-> Global AML compliance spending: $274 billion annually. AML software market: $3.5 billion, growing at 15% CAGR. In Hong Kong, the top 20 banks each spend tens of millions on compliance tech. Even a fraction of one institution's budget is a viable business.
-
-**"What's next after the hackathon?"**
-> Three priorities. Benchmark on labeled AML datasets to quantify false positive reduction. Integrate with real banking infrastructure -- case management APIs, SWIFT message parsing, KYC databases. Explore patent protection for the 3D spatial encoding scheme and counterfactual analysis method.
-
----
-
-## Q&A Tips
-
-- **If you don't know the answer:** "That's a great question -- we haven't explored that yet, but here's how we'd approach it..." Then pivot to something you do know.
-- **If they ask about something you demoed:** Pull it up on screen again. Showing > telling.
-- **If they challenge the tech:** Stay calm, be specific. Mention exact numbers: "0.4/0.3/0.3 weights", "14 techniques", "256-entry LRU cache", "max depth 4 DFS". Specificity = credibility.
-- **If they ask "why should we pick you":** "No other team at this hackathon built a multi-agent agentic investigation system that runs autonomously from natural language, with 3D spatial visualization and counterfactual explainability, on real financial transaction data. That's not incremental -- that's a different category."

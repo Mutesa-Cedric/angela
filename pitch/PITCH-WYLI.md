@@ -1,24 +1,5 @@
 # ANGELA -- Wyli's Part: 1.5-Minute Elevator Pitch
 
-**Round:** Elevator pitch (F2F at HKUST) -- 1.5 minutes, no Q&A.
-
-**Your job:** Deliver the pitch that gets us into the final round. Have the 3D visualization visible on screen while speaking. Don't interact with it -- just let it orbit. Speak at moderate pace. The agentic AI walkthrough is the centerpiece -- deliver it like a story, not a spec sheet.
-
----
-
-## What You're Pitching To
-
-We're targeting **Main Awards** + **Ingram Micro & AWS Agentic AI Champion**. Your pitch must hit all of these simultaneously:
-
-| Track | Criteria (what judges score you on) |
-|-------|-------------------------------------|
-| **Main Awards** | Novelty, AI/ML Techniques, Impact, Tech Quality, Presentation |
-| **AWS Agentic AI** | Business Value (#1 tiebreaker!), AWS Implementation, Innovation |
-
-**The #1 tiebreaker for the AWS track is Business Value.** That's why the pitch opens and closes with impact.
-
----
-
 ## Your Script
 
 Read this aloud a few times. It's ~250 words, ~1:35 at moderate pace. If running long, trim the architecture line (marked with *).

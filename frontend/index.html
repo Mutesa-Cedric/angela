@@ -8,22 +8,51 @@
   <body>
     <canvas id="scene-canvas"></canvas>
 
-    <!-- Upload modal -->
-    <div id="upload-modal">
-      <div id="upload-content">
-        <div class="upload-title">ANGELA</div>
-        <div class="upload-subtitle">Anomaly Network Graph for Explainable Laundering Analysis</div>
-        <div id="upload-dropzone">
+    <!-- Wizard -->
+    <div id="wizard-backdrop" class="wizard-backdrop"></div>
+    <div id="wizard-card" class="wizard-card">
+      <!-- Step: Upload form -->
+      <div id="wizard-upload" class="wizard-step">
+        <div class="wizard-brand">ANGELA</div>
+        <div class="wizard-subtitle">Anomaly Network Graph for Explainable Laundering Analysis</div>
+        <div id="upload-dropzone" class="wizard-dropzone">
           <div class="dropzone-icon">CSV / JSON</div>
           <p>Drag &amp; drop transaction file<br/>or click to browse</p>
           <input type="file" id="upload-file" accept=".csv,.json" hidden />
         </div>
-        <div id="upload-error"></div>
-        <div id="upload-spinner">Processing...</div>
-        <div class="upload-divider">
-          <span>or</span>
+        <div id="upload-error" class="wizard-error"></div>
+        <div class="wizard-divider"><span>or</span></div>
+        <button id="load-sample-btn" class="wizard-btn">Load Sample Data</button>
+      </div>
+
+      <!-- Step: Boot sequence -->
+      <div id="wizard-sequence" class="wizard-step" style="display:none">
+        <div class="wizard-brand small">ANGELA</div>
+        <div id="seq-phase" class="seq-phase">TRANSMITTING</div>
+        <div id="seq-subtitle" class="seq-subtitle">Uploading transaction data...</div>
+        <div class="seq-progress-track">
+          <div id="seq-progress-bar" class="seq-progress-bar"></div>
         </div>
-        <button id="load-sample-btn">Load Sample Data</button>
+        <div id="seq-counter" class="seq-counter">&nbsp;</div>
+        <div id="seq-steps" class="seq-steps">
+          <span class="seq-dot active"></span>
+          <span class="seq-dot"></span>
+          <span class="seq-dot"></span>
+          <span class="seq-dot"></span>
+          <span class="seq-dot"></span>
+        </div>
+      </div>
+
+      <!-- Step: Ready -->
+      <div id="wizard-ready" class="wizard-step" style="display:none">
+        <div class="wizard-brand small">ANGELA</div>
+        <div class="seq-phase ready">SYSTEM READY</div>
+        <div class="ready-stats">
+          <div class="ready-stat"><span id="ready-entities" class="ready-value">0</span><label>entities</label></div>
+          <div class="ready-stat"><span id="ready-tx" class="ready-value">0</span><label>transactions</label></div>
+          <div class="ready-stat"><span id="ready-buckets" class="ready-value">0</span><label>time windows</label></div>
+        </div>
+        <div class="seq-subtitle">Intelligence graph online.</div>
       </div>
     </div>
 

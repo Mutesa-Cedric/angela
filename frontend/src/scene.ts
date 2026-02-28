@@ -10,6 +10,7 @@ export interface SceneContext {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   composer: EffectComposer;
+  bloomPass: UnrealBloomPass;
   controls: OrbitControls;
   raycaster: THREE.Raycaster;
   pointer: THREE.Vector2;
@@ -97,7 +98,7 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
   animate();
 
   return {
-    scene, camera, renderer, composer, controls, raycaster, pointer,
+    scene, camera, renderer, composer, bloomPass, controls, raycaster, pointer,
     onFrame: (cb: () => void) => frameCallbacks.push(cb),
   };
 }

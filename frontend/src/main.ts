@@ -4,7 +4,7 @@ import { NodeLayer, riskColorCSS } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
 import { AssetLayer } from "./graph/AssetLayer";
 import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus } from "./api/client";
-import * as upload from "./ui/upload";
+import * as wizard from "./ui/wizard";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
 import * as camera from "./ui/camera";
@@ -22,6 +22,9 @@ const nodeLayer = new NodeLayer(5000);
 ctx.scene.add(nodeLayer.mesh);
 const edgeLayer = new EdgeLayer(ctx.scene);
 const assetLayer = new AssetLayer(ctx.scene);
+
+// Init wizard with scene + nodeLayer deps
+wizard.init({ ctx, nodeLayer });
 
 // Add axis labels to scene
 addAxisLabels(ctx.scene);
@@ -306,14 +309,14 @@ demo.init({
 
 const reuploadBtn = document.getElementById("reupload-btn") as HTMLButtonElement;
 reuploadBtn.addEventListener("click", () => {
-  upload.show();
+  wizard.show();
   reuploadBtn.style.display = "none";
 });
 
 // --- Init ---
 
-async function startGraph(): Promise<void> {
-  const snapshot = await getSnapshot(0);
+async function startGraph(preloaded?: Snapshot): Promise<void> {
+  const snapshot = preloaded ?? await getSnapshot(0);
   slider.init(snapshot.meta.n_buckets, 0);
   currentSnapshot = snapshot;
   nodeLayer.update(snapshot.nodes);
@@ -331,8 +334,8 @@ async function startGraph(): Promise<void> {
   wsClient.connect();
 }
 
-upload.onLoaded(() => {
-  startGraph().catch(console.error);
+wizard.onLoaded((snapshot) => {
+  startGraph(snapshot).catch(console.error);
 });
 
 async function init(): Promise<void> {
@@ -346,14 +349,14 @@ async function init(): Promise<void> {
   try {
     const status = await getStatus();
     if (status.loaded) {
-      upload.hide();
+      wizard.hide();
       await startGraph();
     } else {
-      upload.show();
+      wizard.show();
     }
   } catch {
-    // Backend not ready or status endpoint missing — show upload modal
-    upload.show();
+    // Backend not ready or status endpoint missing — show wizard
+    wizard.show();
   }
 }
 

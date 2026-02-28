@@ -18,10 +18,8 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
 
-      - name: Deploy backend to VPS
+      - name: Create deploy script
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
           PROJECT_DIR: ${{ secrets.PROJECT_DIR }}
           DATA_DIR: ${{ secrets.DATA_DIR }}
           LOGS_DIR: ${{ secrets.LOGS_DIR }}
@@ -29,5 +27,24 @@ jobs:
           HOST_PORT: ${{ secrets.HOST_PORT }}
           ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
-          DEPLOY_SCRIPT="cd ${PROJECT_DIR} && git pull origin main && cd backend && mkdir -p ${DATA_DIR} && mkdir -p ${LOGS_DIR} && docker build -t ${CONTAINER_NAME} . && (docker stop ${CONTAINER_NAME} || true) && (docker rm ${CONTAINER_NAME} || true) && docker run -d -p ${HOST_PORT}:8000 -v ${DATA_DIR}:/app/data -v ${LOGS_DIR}:/app/logs --env-file ${ENV_FILE} --name ${CONTAINER_NAME} --restart unless-stopped ${CONTAINER_NAME}"
-          ssh -i ~/.ssh/deploy_key ${VPS_USERNAME}@${VPS_HOST} "${DEPLOY_SCRIPT}"
+          cat > /tmp/deploy.sh << SCRIPT
+          #!/bin/bash
+          set -e
+          cd ${PROJECT_DIR}
+          git pull origin main
+          cd backend
+          mkdir -p ${DATA_DIR}
+          mkdir -p ${LOGS_DIR}
+          docker build -t ${CONTAINER_NAME} .
+          docker stop ${CONTAINER_NAME} || true
+          docker rm ${CONTAINER_NAME} || true
+          docker run -d -p ${HOST_PORT}:8000 -v ${DATA_DIR}:/app/data -v ${LOGS_DIR}:/app/logs --env-file ${ENV_FILE} --name ${CONTAINER_NAME} --restart unless-stopped ${CONTAINER_NAME}
+          SCRIPT
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+        run: |
+          scp -i ~/.ssh/deploy_key /tmp/deploy.sh ${VPS_USERNAME}@${VPS_HOST}:/tmp/deploy.sh
+          ssh -i ~/.ssh/deploy_key ${VPS_USERNAME}@${VPS_HOST} "bash /tmp/deploy.sh"

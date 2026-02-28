@@ -1,5 +1,7 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -8,13 +10,33 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routes import router
+from .routes_cases import router as cases_router
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    from .database import close_db, init_db
+
+    try:
+        await init_db()
+        log.info("Database initialized.")
+    except Exception as exc:
+        log.warning("Database not available — case persistence disabled: %s", exc)
+    yield
+    try:
+        await close_db()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title="ANGELA API",
     description="Anomaly Network Graph for Explainable Laundering Analysis",
-    version="0.1.0",
+    version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -31,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(cases_router)
 
 
 @app.get("/health")

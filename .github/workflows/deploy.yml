@@ -1,0 +1,39 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+      - name: Deploy backend to VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} '\
+            cd ${{ secrets.PROJECT_DIR }} && \
+            git pull origin main && \
+            cd backend && \
+            mkdir -p ${{ secrets.DATA_DIR }} && \
+            mkdir -p ${{ secrets.LOGS_DIR }} && \
+            docker build -t ${{ secrets.CONTAINER_NAME }} . && \
+            docker stop ${{ secrets.CONTAINER_NAME }} || true && \
+            docker rm ${{ secrets.CONTAINER_NAME }} || true && \
+            docker run -d \
+              -p ${{ secrets.HOST_PORT }}:8000 \
+              -v ${{ secrets.DATA_DIR }}:/app/data \
+              -v ${{ secrets.LOGS_DIR }}:/app/logs \
+              --env-file ${{ secrets.ENV_FILE }} \
+              --name ${{ secrets.CONTAINER_NAME }} \
+              --restart unless-stopped \
+              ${{ secrets.CONTAINER_NAME }}'

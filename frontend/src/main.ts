@@ -777,7 +777,7 @@ function renderAgentHistory(): void {
     <div class="agent-history-title">Recent Runs</div>
     ${agentRunSummaries.slice(0, 4).map((run) => `
       <div class="agent-history-row status-${run.status}" data-run-id="${run.run_id}">
-        <span class="agent-history-state">${run.status.toUpperCase()} ${Math.round(run.progress)}%</span>
+        <span class="agent-history-state">${(run.status || "unknown").toUpperCase()} ${Math.round(run.progress ?? 0)}%</span>
         <span class="agent-history-query" title="${run.query}">${run.query.slice(0, 36)}${run.query.length > 36 ? "..." : ""}</span>
       </div>
     `).join("")}
@@ -789,7 +789,7 @@ function renderAgentHistory(): void {
       const run = agentRunSummaries.find((r) => r.run_id === runId);
       if (!run) return;
       nlqInput.value = run.query;
-      agentProfile.value = run.profile;
+      agentProfile.value = run.profile || "balanced";
     });
   }
 }
@@ -916,7 +916,9 @@ async function runAgentFlow(): Promise<void> {
 
     activeAgentRunId = result.run_id;
     agentPanel.setRunId(result.run_id);
-    agentPanel.setResult(result);
+    // Ensure profile has a fallback value for display
+    const resultWithProfile = { ...result, profile: result.profile || "balanced" };
+    agentPanel.setResult(resultWithProfile);
 
     agentMiniState.textContent = "Completed";
 

@@ -31,6 +31,32 @@ export interface EntityReason {
   weight: number;
 }
 
+export interface VelocityEvidence {
+  tx_count: number;
+  tx_per_minute: number;
+  population_median: number;
+  population_p95: number;
+}
+
+export interface StructuringEvidence {
+  near_threshold_count: number;
+  threshold: number;
+  delta: number;
+}
+
+export interface CircularFlowEvidence {
+  cycle_count: number;
+  shortest_cycle_length: number;
+  counterparties: string[];
+}
+
+export interface EntityEvidence {
+  velocity?: VelocityEvidence;
+  structuring?: StructuringEvidence;
+  circular_flow?: CircularFlowEvidence;
+  flagged_tx_ids?: string[];
+}
+
 export interface EntityDetail {
   id: string;
   type: string;
@@ -39,7 +65,7 @@ export interface EntityDetail {
   kyc_level: string;
   risk_score: number;
   reasons: EntityReason[];
-  evidence: Record<string, unknown>;
+  evidence: EntityEvidence;
   activity: {
     in_count: number;
     out_count: number;

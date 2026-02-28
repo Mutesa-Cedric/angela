@@ -103,11 +103,19 @@ async function selectEntity(entityId: string | null): Promise<void> {
 
   panel.showLoading();
   try {
-    const [detail] = await Promise.all([
+    const [detail, neighborhood] = await Promise.all([
       getEntity(entityId, currentSnapshot.meta.t),
-      loadNeighborEdges(entityId, currentSnapshot.meta.t, currentK),
+      getNeighbors(entityId, currentSnapshot.meta.t, currentK),
     ]);
-    panel.show(detail);
+
+    // Update edges from the neighborhood data
+    const riskScores = new Map<string, number>();
+    for (const node of currentSnapshot.nodes) {
+      riskScores.set(node.id, node.risk_score);
+    }
+    edgeLayer.update(neighborhood.edges, nodeLayer, riskScores);
+
+    panel.show(detail, neighborhood);
 
     // Fire AI summary asynchronously — don't block panel
     getAIExplanation(entityId, currentSnapshot.meta.t)

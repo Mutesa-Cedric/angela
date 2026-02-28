@@ -41,15 +41,15 @@ function smoothMove(
 export function overview(ctx: SceneContext): void {
   smoothMove(
     ctx,
-    { x: 15, y: 12, z: 15 },
-    { x: 0, y: 2, z: 0 },
+    { x: 24, y: 16, z: 24 },
+    { x: 0, y: 2.8, z: 0 },
   );
 }
 
 export function topDown(ctx: SceneContext): void {
   smoothMove(
     ctx,
-    { x: 0, y: 25, z: 0.1 },
+    { x: 0, y: 36, z: 0.1 },
     { x: 0, y: 0, z: 0 },
   );
 }
@@ -72,7 +72,7 @@ export function focusEntity(
 
   smoothMove(
     ctx,
-    { x: pos.x + 4, y: pos.y + 3, z: pos.z + 4 },
+    { x: pos.x + 5.2, y: pos.y + 3.8, z: pos.z + 5.2 },
     { x: pos.x, y: pos.y, z: pos.z },
   );
 }

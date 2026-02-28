@@ -11,11 +11,11 @@ const _tmpB = new THREE.Color();
 /** Continuous risk-to-color gradient for edges. */
 function edgeRiskColor(risk: number): THREE.Color {
   if (risk < 0.3) {
-    return _tmpA.set(0x1a3355).lerp(_tmpB.set(0x338866), risk / 0.3);
+    return _tmpA.set(0x2d5fa5).lerp(_tmpB.set(0x35c2a0), risk / 0.3);
   } else if (risk < 0.6) {
-    return _tmpA.set(0x338866).lerp(_tmpB.set(0xdd8800), (risk - 0.3) / 0.3);
+    return _tmpA.set(0x35c2a0).lerp(_tmpB.set(0xffb24b), (risk - 0.3) / 0.3);
   } else {
-    return _tmpA.set(0xdd8800).lerp(_tmpB.set(0xff3333), (risk - 0.6) / 0.4);
+    return _tmpA.set(0xffb24b).lerp(_tmpB.set(0xff5555), (risk - 0.6) / 0.4);
   }
 }
 
@@ -45,9 +45,9 @@ export class EdgeLayer {
 
     // Bucket edges into thickness tiers by amount
     const tiers: Tier[] = [
-      { maxAmount: 1000, linewidth: 0.03, edges: [] },
-      { maxAmount: 10000, linewidth: 0.06, edges: [] },
-      { maxAmount: Infinity, linewidth: 0.1, edges: [] },
+      { maxAmount: 1000, linewidth: 0.05, edges: [] },
+      { maxAmount: 10000, linewidth: 0.085, edges: [] },
+      { maxAmount: Infinity, linewidth: 0.13, edges: [] },
     ];
 
     for (const edge of edges) {
@@ -87,14 +87,15 @@ export class EdgeLayer {
         linewidth: tier.linewidth,
         vertexColors: true,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.86,
         dashed: true,
         dashScale: 1,
-        dashSize: 0.8,
-        gapSize: 0.4,
+        dashSize: 1.15,
+        gapSize: 0.18,
         dashOffset: 0,
         worldUnits: true,
         depthWrite: false,
+        depthTest: false,
       });
       material.resolution.set(window.innerWidth, window.innerHeight);
 
@@ -143,17 +144,18 @@ export class EdgeLayer {
     geometry.setColors(colors);
 
     const material = new LineMaterial({
-      linewidth: 0.12,
+      linewidth: 0.16,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.96,
       dashed: true,
       dashScale: 1,
-      dashSize: 0.5,
-      gapSize: 0.3,
+      dashSize: 0.75,
+      gapSize: 0.2,
       dashOffset: 0,
       worldUnits: true,
       depthWrite: false,
+      depthTest: false,
     });
     material.resolution.set(window.innerWidth, window.innerHeight);
 

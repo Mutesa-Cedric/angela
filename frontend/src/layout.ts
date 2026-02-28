@@ -9,10 +9,15 @@ import type { SnapshotNode } from "./types";
  * Nodes within the same lane are jittered deterministically to avoid overlap.
  */
 
-const LANE_SPACING = 4;
-const HEIGHT_SCALE = 8;
-const KYC_Z_OFFSET = 3;
-const JITTER_SCALE = 1.5;
+export const RISK_LAYOUT = {
+  laneSpacing: 5.8,
+  heightScale: 10.2,
+  kycZOffset: 4.8,
+  jitterRadiusMin: 0.45,
+  jitterRadiusMax: 2.35,
+  yJitter: 0.6,
+  laneWave: 0.42,
+} as const;
 
 function deterministicHash(str: string): number {
   let hash = 0;
@@ -30,20 +35,29 @@ export function computePositions(
   const positions = new Float32Array(nodes.length * 3);
 
   // Center lanes around origin
-  const laneOffset = ((nJurisdictions - 1) * LANE_SPACING) / 2;
+  const laneOffset = ((nJurisdictions - 1) * RISK_LAYOUT.laneSpacing) / 2;
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
-    const hash = deterministicHash(node.id);
-    const hash2 = deterministicHash(node.id + "_z");
+    const hash = deterministicHash(node.id) >>> 0;
+    const hash2 = deterministicHash(`${node.id}_z`) >>> 0;
+    const hash3 = deterministicHash(`${node.id}_y`) >>> 0;
 
-    // Deterministic jitter within lane
-    const jitterX = ((hash & 0xffff) / 0xffff - 0.5) * JITTER_SCALE;
-    const jitterZ = ((hash2 & 0xffff) / 0xffff - 0.5) * JITTER_SCALE;
+    // Deterministic radial jitter within each jurisdiction lane.
+    const radialSeed = (hash & 0xffffff) / 0xffffff;
+    const angleSeed = (hash2 & 0xffffff) / 0xffffff;
+    const ySeed = (hash3 & 0xffffff) / 0xffffff;
+    const angle = angleSeed * Math.PI * 2;
+    const radius = RISK_LAYOUT.jitterRadiusMin
+      + Math.sqrt(radialSeed) * (RISK_LAYOUT.jitterRadiusMax - RISK_LAYOUT.jitterRadiusMin);
 
-    const x = node.jurisdiction_bucket * LANE_SPACING - laneOffset + jitterX;
-    const y = node.risk_score * HEIGHT_SCALE;
-    const z = (node.kyc_level === "enhanced" ? KYC_Z_OFFSET : 0) + jitterZ;
+    const jitterX = Math.cos(angle) * radius;
+    const jitterZ = Math.sin(angle) * radius;
+    const wave = Math.sin(node.jurisdiction_bucket * 0.9 + angle) * RISK_LAYOUT.laneWave;
+
+    const x = node.jurisdiction_bucket * RISK_LAYOUT.laneSpacing - laneOffset + jitterX;
+    const y = Math.max(0, node.risk_score * RISK_LAYOUT.heightScale + (ySeed - 0.5) * RISK_LAYOUT.yJitter);
+    const z = (node.kyc_level === "enhanced" ? RISK_LAYOUT.kycZOffset : 0) + jitterZ + wave;
 
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;

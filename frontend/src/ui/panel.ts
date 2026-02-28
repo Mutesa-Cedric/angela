@@ -13,6 +13,80 @@ let onCloseCallback: (() => void) | null = null;
 let onCounterfactualCallback: ((result: CounterfactualResult) => void) | null = null;
 let currentEntity: EntityDetail | null = null;
 let currentBucket: number = 0;
+let currentBucketCount: number = 0;
+
+const DETECTOR_META: Record<string, { label: string; short: string; color: string }> = {
+  velocity: {
+    label: "Velocity Burst",
+    short: "Velocity",
+    color: "#4488ff",
+  },
+  structuring: {
+    label: "Threshold Splitting",
+    short: "Structuring",
+    color: "#ffaa00",
+  },
+  circular_flow: {
+    label: "Circular Layering",
+    short: "Circular Flow",
+    color: "#ff4466",
+  },
+};
+
+interface RiskBandMeta {
+  key: "low" | "guarded" | "elevated" | "critical";
+  label: string;
+  note: string;
+}
+
+function describeRiskBand(score: number): RiskBandMeta {
+  if (score >= 0.75) {
+    return {
+      key: "critical",
+      label: "Critical Priority",
+      note: "Review this entity first. Multiple strong risk signals are present.",
+    };
+  }
+  if (score >= 0.45) {
+    return {
+      key: "elevated",
+      label: "Elevated Priority",
+      note: "Meaningful risk signals are present and should be reviewed soon.",
+    };
+  }
+  if (score >= 0.2) {
+    return {
+      key: "guarded",
+      label: "Guarded Priority",
+      note: "Some unusual patterns exist but the risk is not extreme.",
+    };
+  }
+  return {
+    key: "low",
+    label: "Low Priority",
+    note: "No strong suspicious signal dominates this time window.",
+  };
+}
+
+function formatSignedCurrency(value: number): string {
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(value).toLocaleString()}`;
+}
+
+function formatCompactCurrency(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+function formatBucketLabel(): string {
+  if (currentBucketCount > 0) {
+    return `Time Window ${currentBucket + 1} of ${currentBucketCount}`;
+  }
+  return `Time Window ${currentBucket + 1}`;
+}
 
 panelClose.addEventListener("click", () => {
   hide();
@@ -23,8 +97,11 @@ export function onClose(cb: () => void): void {
   onCloseCallback = cb;
 }
 
-export function setBucket(t: number): void {
+export function setBucket(t: number, bucketCount?: number): void {
   currentBucket = t;
+  if (typeof bucketCount === "number" && bucketCount > 0) {
+    currentBucketCount = bucketCount;
+  }
 }
 
 export function onCounterfactual(cb: (result: CounterfactualResult) => void): void {
@@ -37,32 +114,62 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
 
   const riskPct = (entity.risk_score * 100).toFixed(0);
   const riskCSS = riskColorCSS(entity.risk_score);
+  const riskBand = describeRiskBand(entity.risk_score);
 
   // --- Badges ---
   const badgesHTML = `
     <div class="stat-row">
-      <span class="badge">${entity.type}</span>
-      <span class="badge">Bank ${entity.bank}</span>
-      <span class="badge">${entity.kyc_level} KYC</span>
+      <span class="badge" title="Entity category in the transaction graph.">${escapeHtml(entity.type)}</span>
+      <span class="badge" title="Institution associated with this entity record.">Bank ${escapeHtml(entity.bank)}</span>
+      <span class="badge" title="Know Your Customer status used for compliance depth.">${escapeHtml(entity.kyc_level)} KYC</span>
+    </div>`;
+
+  const quickGuideHTML = `
+    <div class="entity-quick-guide soft-copy">
+      <strong>How to read this panel:</strong> start with the risk score, then see which signals contributed most, then review evidence cards and connected entities for ${formatBucketLabel().toLowerCase()}.
     </div>`;
 
   // --- Risk score with large number ---
   const riskHTML = `
     <div class="risk-score">
-      <label>Risk Score</label>
-      <div class="risk-number" style="color:${riskCSS}">${riskPct}%</div>
+      <label>Risk Score <span class="soft-tip" title="Model-estimated priority score for this bucket. It guides review order and is not a legal conclusion.">?</span></label>
+      <div class="risk-number-row">
+        <div class="risk-number" style="color:${riskCSS}">${riskPct}%</div>
+        <span class="risk-band risk-band-${riskBand.key}" title="${escapeHtml(riskBand.note)}">${riskBand.label}</span>
+      </div>
       <div class="risk-bar">
         <div class="risk-fill" style="width:${riskPct}%"></div>
       </div>
+      <div class="soft-copy">${riskBand.note}</div>
     </div>`;
 
   // --- Activity stats ---
   const activityHTML = entity.activity
-    ? `<div class="stat-row">
-        <span>In: ${entity.activity.in_count} tx ($${entity.activity.in_sum.toLocaleString()})</span>
-        <span>Out: ${entity.activity.out_count} tx ($${entity.activity.out_sum.toLocaleString()})</span>
+    ? `<div class="activity-section">
+        <h3>Activity Snapshot <span class="soft-tip" title="Transaction volume and direction for this entity in the selected time bucket.">?</span></h3>
+        <div class="soft-copy">Use this to understand whether funds are mostly entering, leaving, or netting out.</div>
+        <div class="activity-grid">
+          <div class="activity-card" title="Inbound transfers received by this entity in this bucket.">
+            <span class="activity-label">Inbound</span>
+            <span class="activity-value">${entity.activity.in_count} tx</span>
+            <span class="activity-meta">$${entity.activity.in_sum.toLocaleString()}</span>
+          </div>
+          <div class="activity-card" title="Outbound transfers sent by this entity in this bucket.">
+            <span class="activity-label">Outbound</span>
+            <span class="activity-value">${entity.activity.out_count} tx</span>
+            <span class="activity-meta">$${entity.activity.out_sum.toLocaleString()}</span>
+          </div>
+          <div class="activity-card" title="Inbound minus outbound value for this time window.">
+            <span class="activity-label">Net Flow</span>
+            <span class="activity-value ${entity.activity.in_sum - entity.activity.out_sum >= 0 ? "activity-net-positive" : "activity-net-negative"}">${formatSignedCurrency(entity.activity.in_sum - entity.activity.out_sum)}</span>
+            <span class="activity-meta">in - out</span>
+          </div>
+        </div>
       </div>`
-    : "";
+    : `<div class="activity-section">
+        <h3>Activity Snapshot <span class="soft-tip" title="Transaction volume and direction for this entity in the selected time bucket.">?</span></h3>
+        <div class="soft-copy">No recorded inbound or outbound activity for this entity in the current bucket.</div>
+      </div>`;
 
   // --- Risk attribution bar ---
   const attrHTML = buildAttributionBar(entity.reasons);
@@ -77,8 +184,12 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   const connectedHTML = buildConnectedEntities(neighborhood);
 
   panelContent.innerHTML = `
-    <div class="entity-id">${entity.id}</div>
+    <div class="entity-context-row">
+      <div class="entity-id">${entity.id}</div>
+      <span class="bucket-chip" title="Current time window shown in this panel. Buckets are sequential slices of activity over time.">${formatBucketLabel()}</span>
+    </div>
     ${badgesHTML}
+    ${quickGuideHTML}
     ${riskHTML}
     ${activityHTML}
     ${attrHTML}
@@ -86,7 +197,8 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
     ${flaggedHTML}
     ${connectedHTML}
     <div class="ai-section">
-      <h3>AI Analysis</h3>
+      <h3>AI Analysis <span class="soft-tip" title="Narrative summary generated from the evidence shown above. Always verify against the numeric evidence cards.">?</span></h3>
+      <div class="soft-copy">Plain-language recap to help non-technical reviewers understand the key concern quickly.</div>
       <div id="ai-summary" class="ai-summary markdown-content muted">Loading AI summary...</div>
     </div>
     <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
@@ -104,6 +216,20 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   if (cfBtn) {
     cfBtn.addEventListener("click", () => runCounterfactual());
   }
+
+  for (const btn of Array.from(panelContent.querySelectorAll<HTMLButtonElement>(".connected-entity-link, .evidence-entity-link"))) {
+    btn.addEventListener("click", () => {
+      const entityId = btn.dataset.entityId;
+      if (!entityId) return;
+      window.dispatchEvent(new CustomEvent(ENTITY_LINK_EVENT, { detail: { entityId } }));
+    });
+  }
+
+  for (const btn of Array.from(panelContent.querySelectorAll<HTMLButtonElement>(".flagged-tx-btn"))) {
+    btn.addEventListener("click", () => {
+      void copyFlaggedTxId(btn);
+    });
+  }
 }
 
 /** Horizontal stacked bar showing detector weight contributions. */
@@ -112,32 +238,28 @@ function buildAttributionBar(reasons: EntityDetail["reasons"]): string {
 
   const totalWeight = reasons.reduce((sum, r) => sum + r.weight, 0);
   if (totalWeight === 0) return "";
+  const ordered = [...reasons].sort((a, b) => b.weight - a.weight);
 
-  const detectorColors: Record<string, string> = {
-    velocity: "#4488ff",
-    structuring: "#ffaa00",
-    circular_flow: "#ff4466",
-  };
-
-  const segments = reasons
+  const segments = ordered
     .map((r) => {
       const pct = ((r.weight / totalWeight) * 100).toFixed(1);
-      const color = detectorColors[r.detector] ?? "#888";
-      return `<div class="attr-segment" style="width:${pct}%;background:${color}" title="${r.detector}: ${pct}%"></div>`;
+      const meta = DETECTOR_META[r.detector] ?? { label: r.detector, short: r.detector, color: "#888" };
+      return `<div class="attr-segment" style="width:${pct}%;background:${meta.color}" title="${meta.label}: ${pct}% • ${escapeHtml(r.detail)}"></div>`;
     })
     .join("");
 
-  const labels = reasons
+  const labels = ordered
     .map((r) => {
-      const color = detectorColors[r.detector] ?? "#888";
+      const meta = DETECTOR_META[r.detector] ?? { label: r.detector, short: r.detector, color: "#888" };
       const pct = ((r.weight / totalWeight) * 100).toFixed(0);
-      return `<span class="attr-label"><span class="attr-dot" style="background:${color}"></span>${r.detector} ${pct}%</span>`;
+      return `<span class="attr-label" title="${escapeHtml(r.detail)}"><span class="attr-dot" style="background:${meta.color}"></span>${meta.short} ${pct}%</span>`;
     })
     .join("");
 
   return `
     <div class="attribution">
-      <h3>Risk Attribution</h3>
+      <h3>Risk Attribution <span class="soft-tip" title="Breakdown of which detector families contributed to this risk score.">?</span></h3>
+      <div class="soft-copy attribution-explainer">Think of this as <em>why the score is high</em>. Percentages show each signal's contribution share.</div>
       <div class="attr-bar">${segments}</div>
       <div class="attr-labels">${labels}</div>
     </div>`;
@@ -151,18 +273,19 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
     const v = evidence.velocity;
     cards.push(`
       <div class="evidence-card">
-        <div class="evidence-title" style="color:#4488ff">Velocity</div>
+        <div class="evidence-title" style="color:#4488ff">Velocity Burst</div>
+        <div class="evidence-explainer">Rapid transfer activity in a short window can indicate account staging or layering.</div>
         <div class="evidence-stats">
           <div class="evidence-stat">
             <span class="evidence-value">${v.tx_count}</span>
-            <span class="evidence-label">transactions</span>
+            <span class="evidence-label" title="How many transfers involved this entity during this selected time bucket.">tx in bucket</span>
           </div>
           <div class="evidence-stat">
             <span class="evidence-value">${v.tx_per_minute.toFixed(1)}</span>
-            <span class="evidence-label">tx/min</span>
+            <span class="evidence-label" title="Average transfers per minute for this entity in this window.">tx per minute</span>
           </div>
         </div>
-        <div class="evidence-context">Population: median ${v.population_median}, p95 ${v.population_p95}</div>
+        <div class="evidence-context">Observed rate is compared to population baseline (median ${v.population_median}, p95 ${v.population_p95}).</div>
       </div>`);
   }
 
@@ -170,33 +293,40 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
     const s = evidence.structuring;
     cards.push(`
       <div class="evidence-card">
-        <div class="evidence-title" style="color:#ffaa00">Structuring</div>
+        <div class="evidence-title" style="color:#ffaa00">Threshold Splitting (Structuring)</div>
+        <div class="evidence-explainer">Many transfers just below a reporting limit may indicate deliberate evasion of controls.</div>
         <div class="evidence-stats">
           <div class="evidence-stat">
             <span class="evidence-value">${s.near_threshold_count}</span>
-            <span class="evidence-label">near-threshold tx</span>
+            <span class="evidence-label" title="Transactions close to a reporting threshold, which can indicate amount-splitting behavior.">near-limit tx</span>
           </div>
         </div>
-        <div class="evidence-context">Threshold: $${s.threshold.toLocaleString()} ± $${s.delta.toLocaleString()}</div>
+        <div class="evidence-context">Flagged when amounts fall around $${s.threshold.toLocaleString()} (within ± $${s.delta.toLocaleString()}).</div>
       </div>`);
   }
 
   if (evidence.circular_flow) {
     const c = evidence.circular_flow;
+    const counterparties = c.counterparties.slice(0, 5)
+      .map((id) => `<button class="evidence-entity-link" data-entity-id="${id}">${id}</button>`)
+      .join("");
+    const remaining = c.counterparties.length > 5 ? `<span class="evidence-link-more">+${c.counterparties.length - 5} more</span>` : "";
     cards.push(`
       <div class="evidence-card">
-        <div class="evidence-title" style="color:#ff4466">Circular Flow</div>
+        <div class="evidence-title" style="color:#ff4466">Circular Layering</div>
+        <div class="evidence-explainer">Funds loop through a set of entities and return, which can obscure true source and destination.</div>
         <div class="evidence-stats">
           <div class="evidence-stat">
             <span class="evidence-value">${c.cycle_count}</span>
-            <span class="evidence-label">cycles found</span>
+            <span class="evidence-label" title="How many closed-loop transfer patterns were detected.">cycles found</span>
           </div>
           <div class="evidence-stat">
             <span class="evidence-value">${c.shortest_cycle_length}</span>
-            <span class="evidence-label">shortest length</span>
+            <span class="evidence-label" title="Fewest hops observed in a detected cycle. Lower can indicate tighter looping behavior.">shortest length</span>
           </div>
         </div>
-        <div class="evidence-context">Counterparties: ${c.counterparties.slice(0, 5).join(", ")}${c.counterparties.length > 5 ? ` +${c.counterparties.length - 5} more` : ""}</div>
+        <div class="evidence-context">Linked counterparties involved in loop patterns:</div>
+        <div class="evidence-link-row">${counterparties}${remaining}</div>
       </div>`);
   }
 
@@ -204,7 +334,8 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
 
   return `
     <div class="evidence-section">
-      <h3>Evidence Breakdown</h3>
+      <h3>Evidence Breakdown <span class="soft-tip" title="Concrete numeric patterns that triggered or supported risk signals in this bucket.">?</span></h3>
+      <div class="soft-copy">These cards translate detector output into plain-language facts you can verify quickly.</div>
       ${cards.join("")}
     </div>`;
 }
@@ -213,14 +344,34 @@ function buildEvidenceCards(evidence: EntityEvidence): string {
 function buildFlaggedTx(flaggedIds?: string[]): string {
   if (!flaggedIds || flaggedIds.length === 0) return "";
 
-  const items = flaggedIds
-    .map((id) => `<div class="flagged-tx">${id}</div>`)
+  const maxVisible = 12;
+  const visibleIds = flaggedIds.slice(0, maxVisible);
+  const hiddenCount = Math.max(0, flaggedIds.length - visibleIds.length);
+
+  const items = visibleIds
+    .map((id) => `
+      <button
+        class="flagged-tx-btn"
+        data-tx-id="${escapeHtml(id)}"
+        title="Click to copy this transaction ID"
+      >
+        <span class="flagged-tx">${escapeHtml(id)}</span>
+        <span class="flagged-tx-copy">Copy</span>
+      </button>
+    `)
     .join("");
 
   return `
     <div class="flagged-section">
-      <h3>Flagged Transactions (${flaggedIds.length})</h3>
+      <h3>Flagged Transactions (${flaggedIds.length}) <span class="soft-tip" title="Transaction IDs that matched one or more suspicious pattern detectors.">?</span></h3>
+      <div class="soft-copy">Use these IDs to jump into audit logs or case notes for evidence review.</div>
+      <div class="flagged-summary">
+        <span class="flagged-chip">${formatBucketLabel()}</span>
+        <span class="flagged-chip">Showing ${visibleIds.length} of ${flaggedIds.length}</span>
+        <span class="flagged-chip">Click any ID to copy</span>
+      </div>
       <div class="flagged-list">${items}</div>
+      ${hiddenCount > 0 ? `<div class="flagged-more soft-copy">+${hiddenCount} more flagged IDs hidden to keep this panel readable.</div>` : ""}
     </div>`;
 }
 
@@ -228,34 +379,95 @@ function buildFlaggedTx(flaggedIds?: string[]): string {
 function buildConnectedEntities(neighborhood?: Neighborhood): string {
   if (!neighborhood || neighborhood.nodes.length === 0) return "";
 
-  // Sort by risk descending, take top 5 (exclude center)
+  const flowMap = new Map<string, { inbound: number; outbound: number; directTxCount: number }>();
+  for (const edge of neighborhood.edges) {
+    if (edge.from_id === neighborhood.center_id) {
+      const stat = flowMap.get(edge.to_id) ?? { inbound: 0, outbound: 0, directTxCount: 0 };
+      stat.outbound += edge.amount;
+      stat.directTxCount += 1;
+      flowMap.set(edge.to_id, stat);
+    } else if (edge.to_id === neighborhood.center_id) {
+      const stat = flowMap.get(edge.from_id) ?? { inbound: 0, outbound: 0, directTxCount: 0 };
+      stat.inbound += edge.amount;
+      stat.directTxCount += 1;
+      flowMap.set(edge.from_id, stat);
+    }
+  }
+
+  // Prioritize directly connected neighbors, then high-risk context neighbors.
   const neighbors = neighborhood.nodes
     .filter((n) => n.id !== neighborhood.center_id)
-    .sort((a, b) => b.risk_score - a.risk_score)
-    .slice(0, 5);
+    .map((n) => {
+      const stat = flowMap.get(n.id) ?? { inbound: 0, outbound: 0, directTxCount: 0 };
+      return {
+        node: n,
+        inbound: stat.inbound,
+        outbound: stat.outbound,
+        directTxCount: stat.directTxCount,
+      };
+    })
+    .sort((a, b) => {
+      const aDirect = a.directTxCount > 0 ? 1 : 0;
+      const bDirect = b.directTxCount > 0 ? 1 : 0;
+      if (aDirect !== bDirect) return bDirect - aDirect;
+      if (a.node.risk_score !== b.node.risk_score) return b.node.risk_score - a.node.risk_score;
+      return (b.inbound + b.outbound) - (a.inbound + a.outbound);
+    })
+    .slice(0, 6);
 
   if (neighbors.length === 0) return "";
 
   const rows = neighbors
-    .map((n) => {
-      const pct = (n.risk_score * 100).toFixed(0);
-      const color = riskColorCSS(n.risk_score);
+    .map((item) => {
+      const pct = (item.node.risk_score * 100).toFixed(0);
+      const color = riskColorCSS(item.node.risk_score);
+      const net = item.inbound - item.outbound;
+      const relationLabel = item.directTxCount > 0
+        ? `${item.directTxCount} direct tx`
+        : `${neighborhood.k}-hop context`;
+      const relationClass = item.directTxCount > 0 ? "direct" : "indirect";
+      const netLabel = `${net >= 0 ? "+" : "-"}${formatCompactCurrency(Math.abs(net))}`;
       return `
-        <div class="connected-row">
-          <span class="connected-id">${n.id}</span>
+        <div class="connected-row" title="Neighbor risk score and direct flow context in this time window.">
+          <div class="connected-main-row">
+            <button class="connected-entity-link" data-entity-id="${item.node.id}">${item.node.id}</button>
+            <span class="connected-relation ${relationClass}" title="Shows whether this entity has direct transactions with the selected subject in this bucket.">${relationLabel}</span>
+            <span class="connected-pct" style="color:${color}">${pct}%</span>
+          </div>
           <div class="connected-risk-bar">
             <div class="connected-risk-fill" style="width:${pct}%;background:${color}"></div>
           </div>
-          <span class="connected-pct" style="color:${color}">${pct}%</span>
+          <div class="connected-flow-row">
+            <span class="connected-flow in" title="Estimated inbound value from this neighbor to the selected entity.">← ${formatCompactCurrency(item.inbound)}</span>
+            <span class="connected-flow out" title="Estimated outbound value from the selected entity to this neighbor.">→ ${formatCompactCurrency(item.outbound)}</span>
+            <span class="connected-flow net ${net >= 0 ? "pos" : "neg"}" title="Inbound minus outbound value between selected entity and this neighbor.">${netLabel}</span>
+          </div>
         </div>`;
     })
     .join("");
 
   return `
     <div class="connected-section">
-      <h3>Connected Entities</h3>
+      <h3>Connected Entities <span class="connected-help">(click ID to inspect)</span> <span class="soft-tip" title="Top nearby entities by risk in this neighborhood view. These often explain context around suspicious flows.">?</span></h3>
+      <div class="soft-copy">Top neighbors for ${formatBucketLabel().toLowerCase()}. Rows marked as direct have observed transfers with the selected entity; others are contextual k-hop links.</div>
       ${rows}
     </div>`;
+}
+
+async function copyFlaggedTxId(btn: HTMLButtonElement): Promise<void> {
+  const txId = btn.dataset.txId;
+  if (!txId) return;
+  try {
+    await navigator.clipboard.writeText(txId);
+    const label = btn.querySelector<HTMLElement>(".flagged-tx-copy");
+    if (!label) return;
+    label.textContent = "Copied";
+    window.setTimeout(() => {
+      label.textContent = "Copy";
+    }, 1200);
+  } catch {
+    // Clipboard can fail in restricted browser contexts.
+  }
 }
 
 export function setAISummary(summary: string): void {
@@ -383,6 +595,12 @@ export function hide(): void {
 export function showLoading(): void {
   panel.classList.add("open");
   panelContent.innerHTML = '<div class="muted">Loading...</div>';
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function buildCounterfactualSummaryMarkdown(

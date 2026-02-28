@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional
@@ -31,6 +32,9 @@ class ReportingAgent:
         include_sar: bool = False,
         profile: str = "balanced",
     ) -> Dict[str, Any]:
+        narrative = ""
+        narrative_task: Optional[asyncio.Task[str]] = None
+
         if profile == "fast":
             narrative = _fallback_narrative(query, interpretation, research, analysis)
         else:
@@ -42,27 +46,50 @@ class ReportingAgent:
                 analysis=analysis,
             )
             max_tokens = REPORTING_MAX_TOKENS if profile == "deep" else min(500, REPORTING_MAX_TOKENS)
-            narrative = _call_llm(
-                prompt,
-                system_prompt=REPORTING_SYSTEM_PROMPT,
-                max_tokens=max_tokens,
-            ).strip()
-        if not narrative:
-            narrative = _fallback_narrative(query, interpretation, research, analysis)
+            narrative_task = asyncio.create_task(
+                asyncio.to_thread(
+                    _call_llm,
+                    prompt,
+                    system_prompt=REPORTING_SYSTEM_PROMPT,
+                    max_tokens=max_tokens,
+                )
+            )
 
         sar = None
         top_entity = analysis.get("top_entity_id")
+        sar_payload = None
+        sar_task: Optional[asyncio.Task[str]] = None
         if include_sar and top_entity:
-            payload = _build_entity_sar_payload(top_entity, bucket)
-            if payload is not None:
-                sar = {
-                    "entity_id": top_entity,
-                    "payload": payload,
-                    "narrative": generate_sar_narrative(
+            sar_payload = await asyncio.to_thread(_build_entity_sar_payload, top_entity, bucket)
+            if sar_payload is not None:
+                sar_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        generate_sar_narrative,
                         entity_id=top_entity,
-                        payload_key=json.dumps(payload, sort_keys=True, default=str),
-                    ),
-                }
+                        payload_key=json.dumps(sar_payload, sort_keys=True, default=str),
+                    )
+                )
+
+        if narrative_task and sar_task:
+            narrative, sar_narrative = await asyncio.gather(narrative_task, sar_task)
+        elif narrative_task:
+            narrative = await narrative_task
+            sar_narrative = ""
+        elif sar_task:
+            sar_narrative = await sar_task
+        else:
+            sar_narrative = ""
+
+        narrative = (narrative or "").strip()
+        if not narrative:
+            narrative = _fallback_narrative(query, interpretation, research, analysis)
+
+        if sar_task and sar_payload is not None and top_entity:
+            sar = {
+                "entity_id": top_entity,
+                "payload": sar_payload,
+                "narrative": sar_narrative,
+            }
 
         return {
             "narrative": narrative,

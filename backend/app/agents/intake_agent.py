@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict
 
 from ..nlq import parse_query
@@ -9,7 +10,7 @@ class IntakeAgent:
     name = "intake"
 
     async def run(self, query: str, bucket: int) -> Dict[str, Any]:
-        parsed = parse_query(query)
+        parsed = await asyncio.to_thread(parse_query, query)
         return {
             "query": query,
             "bucket": bucket,

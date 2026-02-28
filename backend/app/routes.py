@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 from collections import deque
@@ -552,7 +553,8 @@ async def ai_explain_entity(
     risk = store.get_entity_risk(t, entity_id)
     activity = store.get_entity_activity(t, entity_id)
 
-    summary = generate_entity_summary(
+    summary = await asyncio.to_thread(
+        generate_entity_summary,
         entity_id=entity_id,
         risk_score=risk["risk_score"],
         reasons_key=json.dumps(risk["reasons"], sort_keys=True),
@@ -650,7 +652,8 @@ async def generate_sar(
         bucket_size_seconds=store.metadata.get("bucket_size_seconds", 86400),
     )
 
-    narrative = generate_sar_narrative(
+    narrative = await asyncio.to_thread(
+        generate_sar_narrative,
         entity_id=entity_id,
         payload_key=json.dumps(payload, sort_keys=True, default=str),
     )
@@ -722,8 +725,8 @@ async def nlq_parse(req: NLQParseRequest) -> dict:
         )
         return cached
 
-    parsed = parse_query(normalized_query)
-    result = execute_intent(parsed["intent"], parsed.get("params", {}), req.bucket)
+    parsed = await asyncio.to_thread(parse_query, normalized_query)
+    result = await asyncio.to_thread(execute_intent, parsed["intent"], parsed.get("params", {}), req.bucket)
     response = {
         "intent": parsed["intent"],
         "params": parsed.get("params", {}),

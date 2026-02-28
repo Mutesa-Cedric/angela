@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, List
 
 from ..data_loader import store
@@ -16,7 +17,7 @@ class ResearchAgent:
         bucket: int,
         max_targets: int = 5,
     ) -> Dict[str, Any]:
-        query_result = execute_intent(intent, params, bucket)
+        query_result = await asyncio.to_thread(execute_intent, intent, params, bucket)
         all_entity_ids = query_result.get("entity_ids", [])
         selected_ids = all_entity_ids[:max_targets]
         profiles = [self._build_entity_profile(entity_id, bucket) for entity_id in selected_ids]

@@ -746,24 +746,27 @@ body.pitch-mode #scene-canvas {
   color: #89a4ca;
 }
 
-.legend-toggle-btn {
+.panel-collapse-toggle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   border: 1px solid rgba(127, 182, 255, 0.28);
-  background: rgba(68, 136, 255, 0.1);
-  color: #b8d6ff;
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
+  background: rgba(68, 136, 255, 0.08);
+  color: #9bb7e8;
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   transition: all 0.15s ease;
 }
 
-.legend-toggle-btn:hover {
-  background: rgba(68, 136, 255, 0.2);
-  border-color: rgba(127, 182, 255, 0.48);
-  color: #e4efff;
+.panel-collapse-toggle:hover {
+  border-color: rgba(127, 182, 255, 0.52);
+  background: rgba(68, 136, 255, 0.16);
+  color: #d1e2ff;
 }
 
 .legend-callout {
@@ -2679,6 +2682,17 @@ body.pitch-mode #scene-canvas {
   gap: 2px;
 }
 
+#nlq-result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#nlq-result-header #nlq-interpretation {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 #agent-controls {
   display: flex;
   gap: 10px;
@@ -2913,6 +2927,15 @@ body.pitch-mode #scene-canvas {
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: right;
+}
+
+#agent-collapse-toggle[aria-expanded="false"],
+#legend-toggle-btn[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+
+#agent-result[data-collapsed="1"] {
+  display: none !important;
 }
 
 #agent-steps {

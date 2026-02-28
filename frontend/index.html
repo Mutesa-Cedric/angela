@@ -160,12 +160,13 @@
         </div>
         <button
           id="legend-toggle-btn"
-          class="legend-toggle-btn"
+          class="panel-collapse-toggle"
           type="button"
           title="Minimize visual guide"
+          aria-label="Minimize visual guide"
           aria-expanded="true"
         >
-          MINIMIZE
+          ▾
         </button>
       </div>
       <div class="legend-callout" title="First-pass triage cue for judges and first-time users.">
@@ -349,7 +350,19 @@
         </label>
       </div>
       <div id="nlq-result" style="display:none">
-        <span id="nlq-interpretation"></span>
+        <div id="nlq-result-header">
+          <span id="nlq-interpretation"></span>
+          <button
+            id="agent-collapse-toggle"
+            class="panel-collapse-toggle"
+            type="button"
+            title="Collapse agent details"
+            aria-label="Collapse agent details"
+            aria-expanded="true"
+          >
+            ▾
+          </button>
+        </div>
         <span id="nlq-summary"></span>
       </div>
       <div id="agent-result" style="display:none">

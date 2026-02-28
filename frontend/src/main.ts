@@ -199,8 +199,8 @@ const legendSubtitle = document.getElementById("legend-subtitle") as HTMLDivElem
 function applyLegendCollapsed(collapsed: boolean): void {
   if (!legend || !legendToggleBtn) return;
   legend.classList.toggle("collapsed", collapsed);
-  legendToggleBtn.textContent = collapsed ? "EXPAND" : "MINIMIZE";
   legendToggleBtn.title = collapsed ? "Expand visual guide" : "Minimize visual guide";
+  legendToggleBtn.setAttribute("aria-label", collapsed ? "Expand visual guide" : "Minimize visual guide");
   legendToggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
   if (legendSubtitle) {
     legendSubtitle.textContent = collapsed ? "Visual Guide (Minimized)" : "Visual Guide";
@@ -663,6 +663,7 @@ const agentProfile = document.getElementById("agent-profile") as HTMLSelectEleme
 const agentResult = document.getElementById("agent-result") as HTMLDivElement;
 const agentStatus = document.getElementById("agent-status") as HTMLSpanElement;
 const agentRunId = document.getElementById("agent-run-id") as HTMLSpanElement;
+const agentCollapseToggle = document.getElementById("agent-collapse-toggle") as HTMLButtonElement;
 const agentProgressFill = document.getElementById("agent-progress-fill") as HTMLDivElement;
 const agentSteps = document.getElementById("agent-steps") as HTMLDivElement;
 const agentMetrics = document.getElementById("agent-metrics") as HTMLDivElement;
@@ -806,6 +807,13 @@ function setAgentRunId(runId: string | null): void {
   agentRunId.title = runId;
 }
 
+function setAgentCollapsed(collapsed: boolean): void {
+  agentResult.dataset.collapsed = collapsed ? "1" : "0";
+  agentCollapseToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  agentCollapseToggle.title = collapsed ? "Expand agent details" : "Collapse agent details";
+  agentCollapseToggle.setAttribute("aria-label", collapsed ? "Expand agent details" : "Collapse agent details");
+}
+
 function setAgentRunning(running: boolean): void {
   agentRequestRunning = running;
   agentSubmit.classList.toggle("running", running);
@@ -818,6 +826,7 @@ function setAgentRunning(running: boolean): void {
   agentStatus.dataset.live = running ? "1" : "0";
   agentMetrics.classList.toggle("live", running);
   if (running) {
+    setAgentCollapsed(false);
     setAgentVisualState("running");
   } else if (agentResult.dataset.state === "running") {
     setAgentVisualState("idle");
@@ -1183,9 +1192,14 @@ function clearNLQ(): void {
 resetAgentSteps();
 setAgentStatus("Idle");
 setAgentProgress(0);
+setAgentCollapsed(false);
 
 nlqSubmit.addEventListener("click", () => runNLQ());
 agentSubmit.addEventListener("click", () => runAgentFlow());
+agentCollapseToggle.addEventListener("click", () => {
+  const collapsed = agentResult.dataset.collapsed === "1";
+  setAgentCollapsed(!collapsed);
+});
 nlqInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
     runAgentFlow();

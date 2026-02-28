@@ -79,27 +79,181 @@ Autopilot camera tours   #   .   .   .   ##  .   .   #   #   .   .   .    (3)
 
 ---
 
+## Agentic AI -- The Core of the Pitch
+
+This is an AI competition. Every team will say "we used AI." What separates ANGELA is that **the AI isn't a feature -- it's the investigator.** The system doesn't just assist a human workflow; it autonomously conducts investigations end-to-end. Below is every agentic capability, what it actually does from the user's perspective, and why it matters.
+
+### What Makes It "Agentic" (Not Just "Uses LLMs")
+
+Calling an LLM once is not agentic. ANGELA's system has:
+
+- **Autonomous multi-step reasoning** -- 4 specialist agents that each make decisions, pass structured output forward, and build on each other's work
+- **Memory and state** -- every investigation run is tracked with a unique ID, timestamped steps, artifacts per agent, status lifecycle (running → completed/failed)
+- **Orchestration with a supervisor** -- the InvestigationSupervisor decides execution order, handles failures, manages caching, and broadcasts progress
+- **Configurable autonomy** -- three depth profiles (fast/balanced/deep) let the system decide how many entities to analyze and how deeply to summarize
+- **Real-time observability** -- every agent step streams progress via WebSocket as it happens, so the user watches the investigation unfold live
+
+### Concrete Agentic Workflows
+
+#### Workflow 1: Natural Language Investigation
+
+An analyst types: **"Find structuring near threshold transactions"**
+
+Here's what happens -- autonomously, no further human input:
+
+```
+USER INPUT
+  │
+  ▼
+AGENT 1 - Intake Agent
+  │  Parses "find structuring near threshold" via LLM
+  │  Extracts: intent = STRUCTURING_NEAR_THRESHOLD, params = {}
+  │  Generates interpretation: "Looking for entities with multiple
+  │  transactions just below the $10,000 reporting threshold"
+  │  → streams AGENT_STEP event to frontend
+  ▼
+AGENT 2 - Research Agent
+  │  Takes the structured intent
+  │  Queries the data store for entities with structuring evidence
+  │  Finds entities where near_threshold_count >= 2
+  │  Ranks them by risk score
+  │  Builds a profile for each: risk data, transaction patterns,
+  │  connected counterparties, jurisdiction info
+  │  → streams AGENT_STEP event to frontend
+  ▼
+AGENT 3 - Analysis Agent
+  │  Receives the ranked entity profiles
+  │  For the top N entities (1 in fast, 3 in balanced, 5 in deep):
+  │    - Gathers risk evidence, activity summary, neighbor context
+  │    - Calls LLM via Bedrock to generate a plain-English summary:
+  │      "Entity E042 executed 7 transactions between $9,100 and
+  │       $9,950 within a single time window, consistent with
+  │       deliberate structuring to avoid the $10,000 threshold.
+  │       Connected to 3 entities in jurisdiction 5."
+  │  → streams AGENT_STEP event to frontend
+  ▼
+AGENT 4 - Reporting Agent
+  │  Compiles everything into an investigator briefing:
+  │    - Original query interpretation
+  │    - Ranked entity list with risk scores
+  │    - AI-generated summaries for top targets
+  │    - Evidence breakdown per entity
+  │    - (Optional) Full SAR narrative for the highest-risk entity
+  │  → streams AGENT_RUN_COMPLETED to frontend
+  ▼
+FRONTEND
+  Highlights the flagged entities in the 3D graph
+  Opens the investigation briefing panel
+  Analyst can click any entity to dive deeper
+```
+
+**The analyst typed one sentence. Four agents did the rest.** That's agentic.
+
+#### Workflow 2: One-Click SAR Generation
+
+An analyst clicks "Generate SAR" on entity E042.
+
+The system autonomously:
+1. Pulls the entity's risk profile (score, reasons, evidence)
+2. Pulls the entity's activity summary (in/out counts, volumes)
+3. Identifies connected entities (up to 10 counterparties) and their risk scores
+4. Assembles a structured payload: entity type, bank, jurisdiction, risk score, all reasons, all evidence, activity data, connected entity profiles, time bucket, bucket duration
+5. Feeds the payload to the Reporting Agent with a SAR-specific system prompt
+6. Generates a multi-paragraph regulatory narrative covering: subject identification, suspicious activity description, transaction patterns, risk indicators, and recommended action
+7. Caches the result (thread-safe) so repeated requests are instant
+
+**Output:** A complete Suspicious Activity Report narrative that would normally take an analyst 4-8 hours to write.
+
+#### Workflow 3: NLQ Graph Query
+
+An analyst types: **"Show me circular flow and layering activity"**
+
+1. The NLQ engine sends the query to the LLM with a system prompt defining 6 possible intents
+2. LLM returns: `intent = CIRCULAR_FLOW, params = {}`
+3. The executor queries all entities where `circular_flow.cycle_count >= 1`
+4. Collects all cycle counterparties into the result set
+5. Finds all edges between the matched entities
+6. Returns entity IDs, edges, and a summary: "12 entities involved in circular flows"
+7. The 3D graph highlights those entities and edges, dimming everything else
+
+**Six supported intents:**
+- `SHOW_HIGH_RISK` -- "show suspicious entities" → filters by risk threshold
+- `LARGE_INCOMING` -- "big incoming transfers" → filters by incoming volume
+- `HIGH_RISK_JURISDICTION` -- "risky entities in jurisdiction 3" → filters by jurisdiction + risk
+- `STRUCTURING_NEAR_THRESHOLD` -- "structuring patterns" → filters by near-threshold evidence
+- `CIRCULAR_FLOW` -- "circular flows" → filters by cycle detection evidence
+- `TOP_CLUSTERS` -- "top risk clusters" → runs cluster detection and returns top N
+
+#### Workflow 4: Autonomous Counterfactual Analysis
+
+An analyst clicks "What If?" on a flagged entity.
+
+The system autonomously:
+1. Examines the entity's risk evidence to decide which edges are suspicious
+2. For structuring evidence: identifies transactions in the $9K-$10K range
+3. For circular flow evidence: identifies edges to/from cycle counterparties
+4. For velocity evidence: identifies transactions less than 2 minutes apart
+5. Removes all identified suspicious edges from a temporary copy of the data
+6. Reruns the full risk pipeline (feature extraction → 3 detectors → fusion) on the cleaned data
+7. Returns: original risk score, counterfactual risk score, the delta, and every removed edge with its reason
+
+**The system decided what to remove, why to remove it, and what the world would look like without it.** That's explainable, autonomous reasoning.
+
+#### Workflow 5: Proactive Investigation Targeting
+
+When data is loaded or anomalies are injected, the system proactively:
+1. Identifies the highest-risk entities across the current time bucket
+2. Detects clusters of connected high-risk entities
+3. Generates investigation targets with labels and reasons
+4. The Autopilot camera system can fly through these targets automatically
+5. AI cache warmup proactively pre-generates summaries for top entities
+
+**Nobody asked it to do this.** The system anticipates what the analyst will need next.
+
+#### Workflow 6: Entity Click → AI Summary
+
+An analyst clicks any entity in the 3D graph.
+
+The system:
+1. Fetches the entity's full detail (type, bank, jurisdiction, KYC level)
+2. Fetches bucket-specific risk data (score, reasons with weights, evidence from each detector)
+3. Fetches activity summary (in/out transaction counts and sums)
+4. Sends all of this to the LLM via Bedrock with an AML-analyst system prompt
+5. Returns a plain-English summary explaining the entity's risk in context
+6. Result is LRU-cached (256 entries) so repeated clicks are instant
+
+### Why This Matters for the AWS Agentic AI Track
+
+The track asks for "AI agents that solve real Hong Kong problems." ANGELA's agentic system:
+
+- **Uses AWS Bedrock** as the LLM backbone (native boto3 integration via Converse API, plus OpenAI-compatible endpoint support)
+- **Is genuinely agentic** -- multi-agent orchestration with supervisor, memory, autonomy, and real-time observability. Not just "we wrapped an LLM call."
+- **Solves a Hong Kong fintech problem** -- AML compliance in Asia's #3 financial center
+- **Has concrete business value** -- SAR automation alone saves thousands of analyst-hours per year across HK's banking sector
+
+---
+
 ## Complete Ranked Talking Points
 
 Ranked by **criteria density** -- how many judging criteria each point addresses. Annotations show exactly which criteria are served.
 
-### Rank 1 -- Multi-agent investigation on AWS Bedrock (6 criteria)
+### Rank 1 -- Agentic investigation with concrete walkthrough (7 criteria)
 
-A 4-agent supervisor pipeline (Intake, Research, Analysis, Reporting) that takes plain English and autonomously investigates. Runs on AWS Bedrock. This IS agentic AI -- agents with memory, orchestration, configurable depth profiles (fast/balanced/deep), real-time progress streaming.
+Don't say "we have a multi-agent system." Walk through what happens: "An analyst types 'find structuring patterns.' Agent one parses the intent. Agent two queries the data store and ranks entities. Agent three generates AI summaries for the top targets via Bedrock. Agent four compiles an investigator briefing. The analyst typed one sentence. Four agents did the rest."
 
-Criteria: M1 (novel architecture), M2 (multi-agent LLM orchestration), M4 (supervisor pattern, typed schemas), A2 (Bedrock native via boto3), A3 (agentic investigation is new for AML), H3 (well-implemented)
+Criteria: M1 (novel), M2 (multi-agent LLM orchestration), M4 (supervisor pattern), M5 (compelling walkthrough), A2 (Bedrock), A3 (agentic investigation is new for AML), H3 (well-implemented)
 
-### Rank 2 -- Counterfactual explainer (6 criteria)
+### Rank 2 -- SAR generation: the money feature (6 criteria)
 
-Answers "what if this entity behaved normally?" Removes suspicious edges (structuring, cycle, velocity), recomputes risk on cleaned data, returns the delta. No other AML tool does this.
-
-Criteria: M1 (novel concept), M2 (counterfactual analysis technique), M3 (regulatory demand for explainability), A1 (explainability = compliance value), A3 (original), H1 (innovative)
-
-### Rank 3 -- Automated SAR generation (6 criteria)
-
-One click generates a Suspicious Activity Report narrative -- the exact regulatory document analysts spend 4-8 hours writing. Hong Kong's JFIU processes 100,000+ STRs annually. ANGELA drafts them in seconds from risk evidence, connected entities, and transaction patterns.
+One click generates a Suspicious Activity Report narrative. The system autonomously gathers risk evidence, connected entities, transaction patterns, and writes a multi-paragraph regulatory document. Hong Kong's JFIU processes 100,000+ STRs annually. Each takes analysts 4-8 hours. ANGELA drafts them in seconds.
 
 Criteria: M1 (creative application), M2 (LLM narrative generation), M3 (direct regulatory impact), A1 (massive time savings = business value), H2 (clear revenue path), H4 (real analyst hours saved)
+
+### Rank 3 -- Counterfactual explainer (6 criteria)
+
+The system autonomously decides which edges are suspicious (structuring? cycle? velocity?), removes them, reruns the full risk pipeline, and shows the delta. It answers "what if this entity behaved normally?" -- autonomous reasoning about its own risk assessments.
+
+Criteria: M1 (novel concept), M2 (counterfactual analysis technique), M3 (regulatory explainability), A1 (compliance value), A3 (original), H1 (innovative)
 
 ### Rank 4 -- Problem statement: AML + Hong Kong (5 criteria)
 
@@ -113,67 +267,73 @@ Entities exist in 3D space. Y-axis = risk score (suspicious entities rise). X-ax
 
 Criteria: M1 (genuinely novel), M4 (GPU instancing, Three.js architecture), M5 (visually spectacular demo), A3 (original), H1 (innovative)
 
-### Rank 6 -- 14 distinct AI/ML techniques (4 criteria)
+### Rank 6 -- NLQ: talk to your data (4 criteria)
+
+Six supported query types, all in plain English. "Show me high risk entities" → LLM parses intent → deterministic execution against the data store → entities highlighted in 3D. No SQL. No filters. No training. Just ask.
+
+Criteria: M2 (NLQ is AI/ML), M1 (creative UX), A1 (user productivity), A3 (natural language interface for AML)
+
+### Rank 7 -- 14 distinct AI/ML techniques (4 criteria)
 
 Count them: (1) multi-agent orchestration, (2) LLM intent extraction, (3) LLM entity summarization, (4) LLM SAR generation, (5) LLM cluster summarization, (6) statistical velocity detection vs population percentiles, (7) rule-based structuring detection ($9K-$10K threshold), (8) DFS cycle detection, (9) BFS k-hop expansion, (10) weighted score fusion, (11) feature extraction pipeline, (12) connected-component clustering, (13) counterfactual edge-removal analysis, (14) composite-key LRU caching with invalidation.
 
 Criteria: M2 (this IS the criterion), A3 (breadth is impressive), H1 (technical depth), H3 (execution quality)
 
-### Rank 7 -- Production architecture (4 criteria)
+### Rank 8 -- Production architecture (4 criteria)
 
 Typed full-stack (Pydantic + TypeScript). Dual AI providers with env-var switching. Docker multi-stage builds. WebSocket real-time event broadcasting. LRU caching. Graceful error handling and retry logic. 25+ API endpoints. Modular separation of risk engine, agent system, NLQ, visualization.
 
 Criteria: M4 (this IS the criterion), A2 (AWS integration is production-grade), H3 (execution quality), H2 (deployment-ready = closer to product)
 
-### Rank 8 -- Market size and business case (4 criteria)
+### Rank 9 -- Market size and business case (4 criteria)
 
 Global AML compliance spending: $274B annually. Banks pay $50K-$500K per compliance analyst seat. Clear SaaS pricing model. Start with HK banks, expand APAC, then global. Competitive moat: no competitor offers 3D spatial investigation + agentic AI.
 
 Criteria: M3 (relevance), A1 (business value), H2 (entrepreneurial potential), H4 (impact)
 
-### Rank 9 -- Three independent risk detectors (3 criteria)
+### Rank 10 -- Real-time agent observability (3 criteria)
+
+Every agent step streams progress via WebSocket as it runs. The frontend shows: "Intake Agent: parsing query... Research Agent: resolving entities... Analysis Agent: generating summary for E042..." The investigation unfolds live on screen.
+
+Criteria: M4 (architectural quality), M5 (demo impact), A2 (production-grade agentic system)
+
+### Rank 11 -- Three independent risk detectors (3 criteria)
 
 Velocity: statistical outlier vs population p50/p95. Structuring: $9,000-$10,000 BSA threshold evasion detection. Circular flow: DFS-based cycle detection (3-4 node loops). Fused with explicit weights (0.4/0.3/0.3).
 
 Criteria: M2 (clear AI/ML), M4 (clean engineering), H3 (well-built)
 
-### Rank 10 -- Real-time WebSocket architecture (3 criteria)
+### Rank 12 -- Proactive warmup and investigation targeting (3 criteria)
 
-Risk changes, cluster detection, agent step progress all stream live. Anomaly injection triggers visible updates: nodes glow, clusters form, beacons appear. Connection manager with dead-connection pruning.
+When data loads, the system proactively identifies highest-risk entities, detects clusters, pre-warms AI caches for top entities and SAR narratives. Nobody asked it to. The Autopilot camera flies through these targets automatically.
 
-Criteria: M4 (architectural quality), M5 (demo impact), H3 (execution)
+Criteria: M1 (creative), M5 (self-presenting demo), A3 (proactive agent behavior)
 
-### Rank 11 -- NLQ engine (3 criteria)
+### Rank 13 -- Configurable depth profiles (2 criteria)
 
-6 intents: high risk, large incoming, jurisdiction, structuring, circular flow, top clusters. LLM parses → deterministic execution → entity IDs + edges + summary. Investigators don't write queries.
+fast = 1 LLM summary, minimal latency. balanced = 3 summaries, default depth. deep = 5 summaries, maximum thoroughness. The system decides which entities deserve the deepest analysis based on risk ranking.
 
-Criteria: M2 (NLQ is AI/ML), M1 (creative UX), A1 (user productivity)
+Criteria: A2 (production-ready agent design), A3 (autonomy in resource allocation)
 
-### Rank 12 -- Autopilot camera tours (3 criteria)
-
-Automated camera flies through highest-risk entities and clusters. Guided investigation without manual navigation. Self-presenting demo.
-
-Criteria: M1 (creative), M5 (the demo runs itself), H1 (novel)
-
-### Rank 13 -- Time-bucketed temporal analysis (2 criteria)
+### Rank 14 -- Time-bucketed temporal analysis (2 criteria)
 
 Transactions grouped into time windows. Slider scrubs through time. Watch risk evolve, clusters form and dissolve.
 
 Criteria: M2 (temporal analysis), M4 (technical execution)
 
-### Rank 14 -- Data compatibility (2 criteria)
+### Rank 15 -- Data compatibility (2 criteria)
 
 IBM AML dataset format, arbitrary CSV with column mapping, JSON snapshots. Works on real transaction data, not toy demos.
 
 Criteria: M4 (practical engineering), A1 (enterprise-ready)
 
-### Rank 15 -- Executive dashboard (2 criteria)
+### Rank 16 -- Executive dashboard (2 criteria)
 
 KPIs: high-risk count, new anomalies, cluster count, cross-border ratio. Risk trend across all buckets. Jurisdiction heatmap.
 
 Criteria: M5 (clear communication of risk posture), A1 (executive decision support)
 
-### Rank 16 -- Anomaly injection (1 criterion, but critical for demo)
+### Rank 17 -- Anomaly injection (1 criterion, but critical for demo)
 
 Inject velocity bursts, structuring patterns, or circular flows on demand. Watch the 3D graph react in real time. Best demo trick available.
 
@@ -181,76 +341,74 @@ Criteria: M5 (presentation impact)
 
 ---
 
-## The 1.5-Minute Elevator Pitch
+## The 1.5-Minute Elevator Pitch (wyli)
 
-**Instructions:** Have the 3D visualization visible on screen while delivering. Speak at moderate pace (~2.5 words/second). Target: ~210 words.
+**Instructions:** Have the 3D visualization visible on screen while delivering. Speak at moderate pace (~2.5 words/second). Target: ~230 words. The agentic AI walkthrough is the centerpiece -- deliver it like you're telling a story, not reading a spec sheet.
 
 Each line is annotated with the criteria it addresses.
 
 ---
 
-> Every year, eight hundred billion to two trillion dollars is laundered through the global financial system. Hong Kong -- one of the world's top three financial centers -- sits at the crossroads of trillions in cross-border flows, making it ground zero for this fight.
+> Every year, two trillion dollars is laundered through the global financial system. Hong Kong -- one of the world's top three financial centers -- processes trillions in cross-border flows, making it ground zero for this fight. The analysts protecting the system? Spreadsheets. Ninety-five percent false positive rates. SARs that take hours to write.
 
-**[M3: Impact, M5: Hook, A1: Business Value, H4: Real-world Impact]**
+**[M3: Impact, M5: Hook, A1: Business Value, H2: Entrepreneurial, H4: Real-world Impact]**
 
-> The analysts protecting the system? They're drowning in spreadsheets. False positive rates above ninety-five percent. SAR reports that take hours to write. The tools have not kept up.
-
-**[M3: Impact, A1: Business Value, H2: Entrepreneurial (pain point)]**
-
-> ANGELA is an AI-powered 3D graph intelligence platform that transforms AML investigation. What you see here isn't a dashboard -- it's a spatial intelligence environment. Suspicious entities physically rise by risk. Jurisdictions map to lanes. Clusters glow and group in real time.
+> ANGELA is an AI-powered 3D graph intelligence platform for AML investigation. What you see isn't a dashboard -- it's a spatial intelligence environment where suspicious entities physically rise by risk, jurisdictions map to lanes, and clusters glow in real time.
 
 **[M1: Novelty, M5: Presentation, A3: Innovation, H1: Innovation]**
 
-> Under the hood, fourteen distinct AI and ML techniques work together. A four-agent agentic investigation system running on AWS Bedrock takes a plain-English question, autonomously resolves entities, fuses risk from three detectors -- velocity anomaly, structuring threshold, and DFS cycle detection -- and delivers an investigator briefing.
+> Here's what makes it agentic. An analyst types one question -- "find structuring patterns near the reporting threshold." From that single sentence, four AI agents running on AWS Bedrock take over. The Intake Agent parses the intent. The Research Agent queries the data store, finds entities with transactions just below ten thousand dollars, and ranks them by risk. The Analysis Agent generates plain-English summaries explaining why each entity is suspicious. The Reporting Agent compiles a full investigator briefing -- and if needed, drafts a complete Suspicious Activity Report automatically. The analyst typed one sentence. Four agents did the rest.
 
-**[M2: AI/ML, M4: Tech, A2: AWS Implementation, A3: Innovation, H3: Tech Execution]**
+**[M2: AI/ML, M4: Tech, A1: Business Value, A2: AWS Implementation, A3: Innovation, H3: Tech Execution]**
 
-> Every risk score is fully explainable. Our counterfactual engine answers "what if this entity behaved normally?" by removing suspicious edges and recomputing -- transparency regulators demand.
+> Every risk score is decomposable -- three detectors, explicit weights, full evidence chains. A counterfactual engine autonomously removes suspicious edges and recomputes: "what would the risk be without this behavior?"
 
-**[M1: Novelty, M2: AI/ML, A1: Business Value (compliance), H1: Innovation]**
+**[M1: Novelty, M2: AI/ML, A1: Business Value, H1: Innovation]**
 
-> One click auto-generates a complete SAR narrative. Hong Kong processes over a hundred thousand suspicious transaction reports a year. Each takes analysts hours. ANGELA drafts them in seconds.
+> Hong Kong files over a hundred thousand suspicious transaction reports a year. Each takes analysts hours. Our agents draft them in seconds. That's not a demo feature -- that's thousands of analyst-hours returned to actual investigation.
 
 **[M3: Impact, A1: Business Value, H2: Entrepreneurial, H4: Impact]**
 
-> Full-stack typed architecture, GPU-instanced 3D rendering, real-time WebSocket, Docker-ready, pluggable AWS Bedrock integration. Built to ship, not just to demo.
+> GPU-instanced 3D rendering, real-time WebSocket, typed full-stack, Docker-ready, native Bedrock integration. Built to ship.
 
 **[M4: Tech & Scalability, A2: AWS Quality, H3: Tech Execution]**
 
-> ANGELA turns AML investigation from needle-in-a-haystack into a guided flight through the data.
+> ANGELA gives compliance analysts an AI investigator that sees the network, understands the patterns, and explains its reasoning.
 
-**[M5: Memorable close]**
+**[M5: Memorable close, A3: Agentic framing]**
 
 ---
 
-**Word count:** ~220. **Delivery time:** ~1:25 at moderate pace.
+**Word count:** ~250. **Delivery time:** ~1:35 at moderate pace. Trim the architecture line if running long.
 
 ### Criteria Coverage Verification
 
 | Criterion | Addressed In | Times Hit |
 |-----------|-------------|-----------|
-| M1 Novelty & Creativity | 3D visualization, counterfactual | 2 |
-| M2 AI/ML Techniques | 14 techniques, multi-agent, 3 detectors, counterfactual | 2 |
+| M1 Novelty & Creativity | 3D spatial viz, counterfactual, agentic investigation | 3 |
+| M2 AI/ML Techniques | 4-agent pipeline walkthrough, 3 detectors, counterfactual | 3 |
 | M3 Impact & Relevance | $2T problem, 95% false positives, SAR volume, HK context | 3 |
-| M4 Tech Implementation | Architecture stack, GPU instancing, Docker, WebSocket | 2 |
-| M5 Presentation | Opening hook, 3D visual on screen, memorable close | 3 |
-| A1 Business Value (TIEBREAKER #1) | $2T problem, analyst pain, SAR automation, compliance need | 4 |
-| A2 AWS Implementation (TIEBREAKER #2) | "running on AWS Bedrock", "pluggable Bedrock integration" | 2 |
-| A3 Innovation | 3D visualization, agentic investigation | 2 |
+| M4 Tech Implementation | Architecture stack, supervisor pattern, GPU instancing | 2 |
+| M5 Presentation | Opening hook, 3D visual, agentic story, memorable close | 4 |
+| A1 Business Value (TIEBREAKER #1) | $2T problem, analyst pain, agent walkthrough, SAR automation, counterfactual compliance | 5 |
+| A2 AWS Implementation (TIEBREAKER #2) | "four AI agents running on AWS Bedrock", "native Bedrock integration" | 2 |
+| A3 Innovation | 3D viz, agentic investigation walkthrough, close framing | 3 |
 | H1 Innovation | 3D visualization, counterfactual | 2 |
-| H2 Entrepreneurial | Analyst pain point, SAR automation value | 2 |
-| H3 Tech Execution | Multi-agent system, architecture stack | 2 |
+| H2 Entrepreneurial | Analyst pain point, SAR automation = thousands of hours | 2 |
+| H3 Tech Execution | Agent pipeline, architecture stack | 2 |
 | H4 Real-world Impact | HK STR volume, analyst hours saved | 2 |
 
-**All 12 criteria across all 3 tracks are explicitly addressed. Zero gaps.**
+**All 12 criteria hit. A1 (Business Value) now hit 5 times -- it's the #1 AWS tiebreaker and the agentic walkthrough directly demonstrates it.**
 
-A1 (Business Value) is hit 4 times because it is the #1 tiebreaker for the AWS track.
+### What changed vs. the old pitch
+
+The old pitch spent one sentence on agents ("a four-agent system...delivers an investigator briefing"). The new pitch walks through the full pipeline step by step -- Intake parses intent, Research queries and ranks, Analysis summarizes via Bedrock, Reporting compiles the briefing and drafts SARs. This is the difference between "we have AI" and "here's what our AI actually does, autonomously, from a single sentence of input."
 
 ---
 
-## 3-Minute Final Round Expansion
+## 3-Minute Final Round Expansion (cedric)
 
-Same structure, doubled depth. Add these sections between the elevator pitch beats:
+Same structure as the elevator pitch, but now you have time to SHOW the agentic system live and go deeper on every beat.
 
 ### After the problem statement -- add market context:
 
@@ -258,29 +416,47 @@ Same structure, doubled depth. Add these sections between the elevator pitch bea
 
 **[A1: Business Value, H2: Entrepreneurial (TAM)]**
 
-### After the 3D visualization -- add live demo moment:
+### After the 3D visualization -- live demo: inject anomaly
 
-> Let me show you. I'll inject a structuring pattern -- ten transactions just below the ten-thousand-dollar reporting threshold. Watch the entity rise in the graph. The risk score updates in real time. The cluster forms. A beacon appears. Everything you see streamed live via WebSocket.
+> Let me show you. I'll inject a structuring pattern -- ten transactions just below the ten-thousand-dollar reporting threshold. Watch the entity rise in the graph. The risk score updates in real time via WebSocket. The cluster forms. A beacon appears.
 
 **[M5: Presentation, M1: Novelty (live reaction), A1: Business Value (demo of detection)]**
 
-### After the AI section -- add technical depth:
+### After the agent walkthrough -- live demo: run an investigation
 
-> The risk pipeline runs three stages: feature extraction computes per-entity velocity and amount distributions, three independent detectors score velocity, structuring, and circular flow, and a fusion layer combines them with explicit weights -- zero-point-four, zero-point-three, zero-point-three. Every weight is auditable.
+> Let me trigger an investigation right now. I'll type "find structuring patterns." Watch the bottom panel -- you can see each agent step streaming in real time. Intake Agent: parsing query. Research Agent: resolving entities. Analysis Agent: generating summary for the top entity. Reporting Agent: compiling briefing. There -- full investigator briefing, generated autonomously from one sentence.
+
+**[M2: AI/ML, A2: AWS (live Bedrock calls), M5: Presentation (most impressive demo moment)]**
+
+### After the investigation demo -- show the SAR
+
+> Now I'll click "Generate SAR" on this flagged entity. The agent gathers risk evidence, transaction patterns, connected entities, and writes a complete Suspicious Activity Report narrative. This document normally takes compliance analysts four to eight hours. Our agents produce it in seconds.
+
+**[A1: Business Value, M3: Impact, H2: Entrepreneurial]**
+
+### Show the counterfactual
+
+> And here's what no other AML tool does. I click "What If?" -- the system autonomously identifies which transactions are suspicious, removes them, reruns the entire risk pipeline, and shows me the delta. This entity's risk drops from 0.82 to 0.15 without the structuring transactions. That's not a black box -- that's explainable AI a regulator can trust.
+
+**[M1: Novelty, M2: AI/ML, A1: Business Value (compliance)]**
+
+### Technical depth -- risk pipeline:
+
+> Under the risk engine: three independent detectors. Velocity compares transaction frequency to population percentiles. Structuring detects amounts in the nine-to-ten-thousand-dollar range. Circular flow uses depth-first search to find three-to-four-node layering loops. Fused with explicit weights: forty, thirty, thirty. Fourteen distinct AI and ML techniques total.
 
 **[M2: AI/ML (depth), M4: Tech (pipeline quality)]**
 
-### After SAR generation -- add competitive landscape:
+### Competitive landscape:
 
-> The market leaders -- NICE Actimize, Featurespace, Feedzai -- all use two-dimensional rule-based dashboards. None offer three-dimensional spatial investigation. None offer agentic multi-agent analysis. None generate SARs from a natural language query. ANGELA operates in a different category.
+> The market leaders -- NICE Actimize, Featurespace, Feedzai -- all use two-dimensional rule-based dashboards. None offer 3D spatial investigation. None have agentic multi-agent analysis. None generate SARs from natural language. None provide counterfactual explainability. ANGELA is a different category of tool.
 
 **[M1: Novelty (vs competition), A1: Business Value (differentiation), H2: Entrepreneurial (moat)]**
 
-### Before the close -- add the path forward:
+### Close with path forward:
 
-> Next steps: pilot with a Hong Kong compliance team, validate on production transaction volumes, and build toward a SaaS platform. The architecture is already Docker-ready and provider-agnostic.
+> Next steps: pilot with a Hong Kong compliance team, validate on production volumes, and build toward a SaaS platform. The architecture is Docker-ready, Bedrock-native, and provider-agnostic. The tech is real, the market is massive, and the problem isn't going away.
 
-**[H2: Entrepreneurial, M4: Scalability, A1: Business Value]**
+**[H2: Entrepreneurial, M4: Scalability, A1: Business Value, M5: Confident close]**
 
 ---
 
@@ -303,7 +479,7 @@ Same structure, doubled depth. Add these sections between the elevator pitch bea
 ### Questions AWS/Ingram Micro judges will ask:
 
 **"How specifically are you using Bedrock?"**
-> We have a native AWS Bedrock integration via boto3's bedrock-runtime client using the Converse API. Our AI service layer supports two providers: OpenAI-compatible and Bedrock native. The four-agent investigation system -- Intake, Research, Analysis, Reporting -- runs its LLM calls through Bedrock. Entity summarization, SAR narrative generation, NLQ intent parsing, and cluster analysis all go through the same provider. The architecture is designed so switching providers is a single environment variable change.
+> Bedrock is the backbone of every agentic capability. The AI service layer integrates natively via boto3's bedrock-runtime Converse API. Every LLM call in the system routes through Bedrock: the Intake Agent's intent parsing, the Analysis Agent's entity summarization, the Reporting Agent's SAR narrative generation, the NLQ engine's query parsing, and the cluster summarization. That's five distinct agentic use cases on a single Bedrock integration. We also support an OpenAI-compatible fallback -- switching providers is a single environment variable -- but Bedrock is the primary production path. The architecture includes retry logic with increased token budgets for reasoning models, graceful fallback on errors, and LRU caching to minimize redundant calls.
 
 **"Who would buy this and how would you monetize?"**
 > Primary buyers: compliance departments at Hong Kong banks and financial institutions. The HKMA requires AML programs -- banks already have compliance budgets. ANGELA sells as a SaaS platform, priced per analyst seat. The SAR automation alone justifies the cost: a compliance analyst costs $50-100K USD annually, and they spend a significant portion of their time writing SARs. If ANGELA saves even 20% of that time, the ROI is immediate. Secondary market: regulators who want a real-time view across institutions.
@@ -332,20 +508,25 @@ Have the 3D graph loaded and slowly orbiting on screen. Don't interact with it -
 
 ### For the final round (3 min): Live demo sequence
 
-| Time | Action | Criteria served |
-|------|--------|----------------|
-| 0:00-0:30 | Problem statement + market over static graph | M3, M5, A1, H4 |
-| 0:30-1:00 | Walk through the 3D visualization: rotate, zoom, show spatial encoding | M1, M5, A3, H1 |
-| 1:00-1:20 | Click an entity, show detail panel with risk reasons | M2, M5 |
-| 1:20-1:50 | Inject a structuring anomaly live. Watch the graph react. | M1, M2, M5, A1 |
-| 1:50-2:10 | Trigger SAR generation, show the narrative appear | M2, M3, A1, H2 |
-| 2:10-2:30 | Show the multi-agent investigation running (WebSocket steps) | M2, A2, H3 |
-| 2:30-2:45 | Flash the architecture diagram, mention Bedrock + Docker | M4, A2, H3 |
-| 2:45-3:00 | Close: market size, path forward, memorable line | A1, H2, M5 |
+| Time | Action | What judges see | Criteria |
+|------|--------|----------------|----------|
+| 0:00-0:20 | Problem + market context | Speaker over static 3D graph | M3, M5, A1, H4 |
+| 0:20-0:40 | Walk the 3D viz: rotate, explain spatial encoding | Risk=height, jurisdiction=lanes, clusters glowing | M1, M5, A3, H1 |
+| 0:40-1:00 | **LIVE: Inject structuring anomaly** | Entity rises, cluster forms, beacon appears | M1, M2, M5 |
+| 1:00-1:40 | **LIVE: Type NLQ "find structuring patterns"** | Agent steps stream in real time on screen | M2, A2, A3, H3 |
+| 1:40-2:00 | **LIVE: Show investigation briefing** | Ranked entities, AI summaries, evidence | M2, M5, A1 |
+| 2:00-2:20 | **LIVE: Generate SAR on top entity** | Full narrative appears in panel | M3, A1, H2, H4 |
+| 2:20-2:35 | **LIVE: Click "What If?" counterfactual** | Risk drops from 0.82 → 0.15, removed edges shown | M1, M2, A1 |
+| 2:35-2:50 | Technical depth: 14 techniques, 3 detectors, Bedrock | Architecture summary | M2, M4, A2, H3 |
+| 2:50-3:00 | Close: competitive moat, path forward | Confident ending | A1, H2, M5 |
 
-### The money demo moment
+### The two money demo moments
 
-The single most impactful demo beat: **inject an anomaly and watch the graph react in real time.** An entity glows, rises, a cluster forms, a beacon appears. This is 10 seconds of visual proof that everything works end-to-end: risk detection, fusion, clustering, WebSocket streaming, 3D rendering. Practice this transition until it's seamless.
+**Money moment #1: Type one sentence, watch four agents work.** Type "find structuring patterns." The WebSocket streams each agent step live: Intake parsing... Research resolving... Analysis summarizing... Reporting compiling. The briefing appears. This is 30 seconds that proves the system is genuinely agentic. **Practice this until the timing is natural.**
+
+**Money moment #2: Inject anomaly, watch the graph react.** An entity glows, rises, a cluster forms, a beacon appears. This is 10 seconds of visual proof that risk detection, fusion, clustering, WebSocket streaming, and 3D rendering all work end-to-end.
+
+Together, these two moments demonstrate: agentic AI + real-time system + spatial intelligence. That's the whole product in 40 seconds of live interaction.
 
 ---
 
@@ -354,11 +535,15 @@ The single most impactful demo beat: **inject an anomaly and watch the graph rea
 Tape this to the back of your laptop during the pitch:
 
 ```
-OPEN:   $2T laundered / HK = #3 financial center / analysts drowning / 95% false positives
-SHOW:   3D graph -- risk=height, jurisdiction=lanes, KYC=depth -- "this isn't a dashboard"
-AI:     14 AI/ML techniques / 4-agent agentic system on Bedrock / velocity + structuring + DFS cycles
-EXPLAIN: counterfactual -- "what if normal?" -- remove edges, recompute, show delta
-VALUE:  SAR in one click / 100K+ STRs in HK / hours → seconds
-TECH:   typed full-stack / GPU instancing / WebSocket / Docker / Bedrock native
-CLOSE:  "needle-in-a-haystack → guided flight through the data"
+OPEN:    $2T laundered / HK = #3 financial center / 95% false positives / SARs take hours
+SHOW:    3D graph -- risk=height, jurisdiction=lanes -- "this isn't a dashboard"
+AGENTS:  "analyst types one sentence, four agents do the rest"
+         Intake → parses intent
+         Research → queries data, ranks entities
+         Analysis → LLM summaries via Bedrock ("E042: 7 transactions below $10K...")
+         Reporting → full briefing + SAR narrative
+EXPLAIN: counterfactual -- remove suspicious edges, recompute, show delta
+VALUE:   SAR automation / 100K+ STRs in HK / hours → seconds / thousands of analyst-hours
+TECH:    14 AI/ML techniques / GPU instancing / WebSocket / Docker / Bedrock native
+CLOSE:   "an AI investigator that sees the network, understands patterns, explains reasoning"
 ```

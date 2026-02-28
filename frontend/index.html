@@ -30,6 +30,66 @@
       <div id="panel-content"></div>
     </div>
 
+    <!-- Legend -->
+    <div id="legend">
+      <div class="legend-title">ANGELA</div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#4488ff"></span>
+        <span>Standard KYC</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#ff8844"></span>
+        <span>Enhanced KYC</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:#ffff00"></span>
+        <span>Selected</span>
+      </div>
+      <div class="legend-divider"></div>
+      <div class="legend-row">
+        <span class="legend-icon">Y</span>
+        <span>Height = Risk Score</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-icon">X</span>
+        <span>Lane = Jurisdiction</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-icon">Z</span>
+        <span>Depth = KYC Level</span>
+      </div>
+      <div class="legend-divider"></div>
+      <div class="legend-row">
+        <span class="legend-swatch edge-low"></span>
+        <span>Low risk edge</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch edge-mid"></span>
+        <span>Medium risk edge</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch edge-high"></span>
+        <span>High risk edge</span>
+      </div>
+    </div>
+
+    <!-- Camera presets -->
+    <div id="camera-presets">
+      <button id="cam-overview" title="Overview">OVR</button>
+      <button id="cam-top" title="Top-down">TOP</button>
+      <button id="cam-focus" title="Focus selected">FOC</button>
+    </div>
+
+    <!-- FPS + stats overlay -->
+    <div id="stats-overlay">
+      <span id="stats-fps">-- FPS</span>
+      <span id="stats-nodes">0 nodes</span>
+      <span id="stats-edges">0 edges</span>
+    </div>
+
+    <!-- Demo autoplay button -->
+    <button id="demo-btn" title="Start demo">DEMO</button>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

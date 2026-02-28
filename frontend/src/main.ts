@@ -6,6 +6,10 @@ import { AssetLayer } from "./graph/AssetLayer";
 import { getSnapshot, getEntity, getNeighbors, getAIExplanation } from "./api/client";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
+import * as camera from "./ui/camera";
+import * as stats from "./ui/stats";
+import * as demo from "./ui/demo";
+import { addAxisLabels } from "./ui/axisLabels";
 import { wsClient } from "./api/ws";
 import type { Snapshot, SnapshotNode } from "./types";
 
@@ -17,6 +21,9 @@ const nodeLayer = new NodeLayer(5000);
 ctx.scene.add(nodeLayer.mesh);
 const edgeLayer = new EdgeLayer(ctx.scene);
 const assetLayer = new AssetLayer(ctx.scene);
+
+// Add axis labels to scene
+addAxisLabels(ctx.scene);
 
 let currentSnapshot: Snapshot | null = null;
 let selectedId: string | null = null;
@@ -31,6 +38,14 @@ khopSelect.addEventListener("change", () => {
   }
 });
 
+// --- Camera presets ---
+
+document.getElementById("cam-overview")!.addEventListener("click", () => camera.overview(ctx));
+document.getElementById("cam-top")!.addEventListener("click", () => camera.topDown(ctx));
+document.getElementById("cam-focus")!.addEventListener("click", () => {
+  camera.focusEntity(ctx, nodeLayer, selectedId);
+});
+
 // --- Data loading ---
 
 async function loadBucket(t: number): Promise<void> {
@@ -39,6 +54,8 @@ async function loadBucket(t: number): Promise<void> {
     nodeLayer.update(currentSnapshot.nodes);
     edgeLayer.clear();
     assetLayer.clear();
+
+    stats.updateCounts(currentSnapshot.nodes.length, currentSnapshot.edges.length);
 
     // Restore selection if entity still exists in this bucket
     if (selectedId) {
@@ -218,8 +235,19 @@ function getAssetEntityIds(assetId: string): string[] {
   return [];
 }
 
-// --- Asset pulse animation ---
-ctx.onFrame(() => assetLayer.animate());
+// --- Per-frame updates ---
+ctx.onFrame(() => {
+  assetLayer.animate();
+  stats.tick();
+});
+
+// --- Demo autoplay ---
+demo.init({
+  loadBucket,
+  selectEntity,
+  overview: () => camera.overview(ctx),
+  focusEntity: (id) => camera.focusEntity(ctx, nodeLayer, id),
+});
 
 // --- Init ---
 
@@ -228,6 +256,7 @@ async function init(): Promise<void> {
   slider.init(snapshot.meta.n_buckets, 0);
   currentSnapshot = snapshot;
   nodeLayer.update(snapshot.nodes);
+  stats.updateCounts(snapshot.nodes.length, snapshot.edges.length);
 
   // Connect WebSocket
   wsClient.connect();

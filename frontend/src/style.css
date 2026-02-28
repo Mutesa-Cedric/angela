@@ -204,3 +204,137 @@ body {
   border-radius: 6px;
   padding: 10px 12px;
 }
+
+/* Legend */
+#legend {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  background: rgba(10, 10, 20, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(68, 136, 255, 0.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  z-index: 10;
+  min-width: 170px;
+}
+
+.legend-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #4488ff;
+  margin-bottom: 10px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #bbb;
+  margin-bottom: 4px;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-swatch.edge-low { background: #334466; }
+.legend-swatch.edge-mid { background: #ffaa00; }
+.legend-swatch.edge-high { background: #ff4444; }
+
+.legend-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #4488ff;
+  flex-shrink: 0;
+}
+
+.legend-divider {
+  height: 1px;
+  background: rgba(68, 136, 255, 0.2);
+  margin: 6px 0;
+}
+
+/* Camera presets */
+#camera-presets {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
+}
+
+#camera-presets button {
+  background: rgba(10, 10, 20, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(68, 136, 255, 0.3);
+  color: #ccc;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+#camera-presets button:hover {
+  background: rgba(68, 136, 255, 0.2);
+  color: #fff;
+  border-color: rgba(68, 136, 255, 0.6);
+}
+
+/* Stats overlay */
+#stats-overlay {
+  position: fixed;
+  bottom: 70px;
+  left: 16px;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  font-family: monospace;
+  color: #666;
+  z-index: 10;
+}
+
+/* Demo button */
+#demo-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 16px;
+  background: rgba(68, 136, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(68, 136, 255, 0.4);
+  color: #4488ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  z-index: 10;
+}
+
+#demo-btn:hover {
+  background: rgba(68, 136, 255, 0.3);
+  border-color: rgba(68, 136, 255, 0.7);
+}
+
+#demo-btn.running {
+  color: #ff8844;
+  border-color: rgba(255, 136, 68, 0.4);
+  background: rgba(255, 136, 68, 0.1);
+}

@@ -57,7 +57,7 @@ function renderNarrative(data: SARResponse): void {
       </div>
       <div class="sar-meta">
         <span class="sar-label">Time Window</span>
-        <span class="sar-value">Bucket ${data.bucket}</span>
+        <span class="sar-value">Window ${data.bucket + 1}</span>
       </div>
     </div>
     <div class="sar-hint">Tip: click any entity ID in this report to open it in the graph.</div>
@@ -112,7 +112,7 @@ function exportPDF(): void {
   <tr><td>Entity Type</td><td>${escapeHtml(String(payload.entity_type || "account"))}</td></tr>
   <tr><td>Institution</td><td>${escapeHtml(String(payload.bank || "N/A"))}</td></tr>
   <tr><td>Risk Score</td><td>${riskPct}%</td></tr>
-  <tr><td>Time Window</td><td>Bucket ${currentData.bucket}</td></tr>
+  <tr><td>Time Window</td><td>Window ${currentData.bucket + 1}</td></tr>
   <tr><td>Report Date</td><td>${new Date().toISOString().slice(0, 10)}</td></tr>
 </table>
 <div class="narrative">${narrativeHtml}</div>

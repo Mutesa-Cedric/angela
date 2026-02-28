@@ -17,18 +17,17 @@ const _tmpC = new THREE.Color();
 const MIN_RADIUS = 0.08;
 const MAX_RADIUS = 0.42;
 
-/** Risk glow thresholds. */
-const GLOW_RISK_MIN = 0.25;
-const GLOW_RISK_FULL = 0.65;
+/** Emissive thresholds for risk glow. */
+const EMISSIVE_RISK_MIN = 0.25;
+const EMISSIVE_RISK_FULL = 0.65;
 
 /** De-emphasis: low-risk nodes get dimmed. */
 const DEEMPH_RISK_THRESHOLD = 0.15;
 const DEEMPH_BRIGHTNESS = 0.56; // multiplier for low-risk node color
 const NLQ_DIM_MULTIPLIER = 0.28;
 
-/** Risk pulse period (seconds) for high-risk emissive cycle. */
-const PULSE_PERIOD = 3.0;
-const PULSE_AMPLITUDE = 0.25;
+/** Risk label threshold — show percentage label on nodes at or above this risk. */
+const RISK_LABEL_THRESHOLD = 0.6;
 
 /** Jurisdiction → color palette (8 slots). */
 const JURISDICTION_COLORS: number[] = [
@@ -47,14 +46,14 @@ const TRANSITION_DURATION = 0.6;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/** Map risk [0,1] to a continuous color gradient. */
+/** Map risk [0,1] to a professional color gradient. */
 function riskColor(risk: number): THREE.Color {
   if (risk < 0.3) {
-    return _tmpA.set(0x2f5ea8).lerp(_tmpB.set(0x29c79a), risk / 0.3);
+    return _tmpA.set(0x238551).lerp(_tmpB.set(0xf39f41), risk / 0.3);
   } else if (risk < 0.6) {
-    return _tmpA.set(0x29c79a).lerp(_tmpB.set(0xffb347), (risk - 0.3) / 0.3);
+    return _tmpA.set(0xf39f41).lerp(_tmpB.set(0xcd4246), (risk - 0.3) / 0.3);
   } else {
-    return _tmpA.set(0xffb347).lerp(_tmpB.set(0xff4f4f), (risk - 0.6) / 0.4);
+    return _tmpA.set(0xcd4246).lerp(_tmpB.set(0x7961db), (risk - 0.6) / 0.4);
   }
 }
 
@@ -118,9 +117,9 @@ export class NodeLayer {
   /** NLQ highlight mode — set of entity IDs to emphasize. */
   private highlightSet: Set<string> | null = null;
 
-  /** Glow sprites for high-risk nodes. */
-  private glowSprites: THREE.Sprite[] = [];
-  private glowMap: THREE.Texture;
+  /** Risk score labels for high-risk nodes. */
+  private riskLabels: HTMLDivElement[] = [];
+  private riskLabelContainer: HTMLDivElement;
 
   constructor(maxCount: number = 5000) {
     this.maxCount = maxCount;
@@ -135,8 +134,8 @@ export class NodeLayer {
       );
       const mat = new THREE.MeshStandardMaterial({
         vertexColors: false,
-        roughness: 0.22,
-        metalness: 0.08,
+        roughness: 0.55,
+        metalness: 0.02,
         emissive: new THREE.Color(0x000000),
         emissiveIntensity: 0,
       });
@@ -156,8 +155,10 @@ export class NodeLayer {
       this.group.add(mesh);
     }
 
-    // Glow texture — procedural radial gradient
-    this.glowMap = this.createGlowTexture();
+    // Risk label container
+    this.riskLabelContainer = document.createElement("div");
+    this.riskLabelContainer.id = "node-risk-labels";
+    document.body.appendChild(this.riskLabelContainer);
   }
 
   /** Convenience: the primary mesh for raycasting (sphere — most common). */
@@ -221,10 +222,10 @@ export class NodeLayer {
       }
 
       const emissive =
-        riskT >= GLOW_RISK_FULL
+        riskT >= EMISSIVE_RISK_FULL
           ? 1.0
-          : riskT >= GLOW_RISK_MIN
-            ? (riskT - GLOW_RISK_MIN) / (GLOW_RISK_FULL - GLOW_RISK_MIN)
+          : riskT >= EMISSIVE_RISK_MIN
+            ? (riskT - EMISSIVE_RISK_MIN) / (EMISSIVE_RISK_FULL - EMISSIVE_RISK_MIN)
             : 0;
 
       const s = this.states[i];
@@ -268,7 +269,7 @@ export class NodeLayer {
     }
 
     this.needsTransition = true;
-    this.updateGlowSprites();
+    this.updateRiskLabels();
   }
 
   // ── Apply instance matrix + color ──────────────────────────────────
@@ -300,10 +301,8 @@ export class NodeLayer {
 
   // ── Per-frame animation tick ─────────────────────────────────────
 
-  animate(dt: number): void {
-    const time = performance.now() * 0.001;
-
-    // Always animate glow + pulse even when position transitions are done
+  animate(dt: number, camera?: THREE.PerspectiveCamera): void {
+    // Position transitions
     const transitioning = this.needsTransition;
 
     if (transitioning) {
@@ -335,7 +334,7 @@ export class NodeLayer {
       if (allDone) this.needsTransition = false;
     }
 
-    // C) Subtle ambient emissive pulse — very low intensity since it's shared across all instances
+    // Static risk-based emissive — no animation
     for (const sm of this.meshes.values()) {
       const mat = sm.mesh.material as THREE.MeshStandardMaterial;
       let maxEmissive = 0;
@@ -344,9 +343,7 @@ export class NodeLayer {
         if (s && s.emissive > maxEmissive) maxEmissive = s.emissive;
       }
       if (maxEmissive > 0) {
-        const pulse = 1 + Math.sin(time * (Math.PI * 2 / PULSE_PERIOD)) * PULSE_AMPLITUDE;
-        // Very subtle — just enough to make the mesh "breathe" without washing out
-        mat.emissiveIntensity = 0.08 * pulse;
+        mat.emissiveIntensity = 0.12;
         mat.emissive.set(0xff6633);
       } else {
         mat.emissiveIntensity = 0;
@@ -362,91 +359,60 @@ export class NodeLayer {
       if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
     }
 
-    // Animate glow sprites
-    this.animateGlowSprites();
+    // Project risk labels to screen space
+    if (camera) this.projectRiskLabels(camera);
   }
 
-  // ── Glow sprites ────────────────────────────────────────────────
+  // ── Risk score labels ─────────────────────────────────────────
 
-  // D) Softer, wider halo texture with gentle falloff
-  private createGlowTexture(): THREE.Texture {
-    const size = 128;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const c = canvas.getContext("2d")!;
-    const gradient = c.createRadialGradient(
-      size / 2, size / 2, 0,
-      size / 2, size / 2, size / 2,
-    );
-    // Softer center, wider falloff, no harsh edges
-    gradient.addColorStop(0, "rgba(255,200,150,0.45)");
-    gradient.addColorStop(0.15, "rgba(255,140,80,0.30)");
-    gradient.addColorStop(0.4, "rgba(255,80,40,0.12)");
-    gradient.addColorStop(0.7, "rgba(255,40,20,0.04)");
-    gradient.addColorStop(1, "rgba(255,30,15,0.0)");
-    c.fillStyle = gradient;
-    c.fillRect(0, 0, size, size);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    return tex;
-  }
-
-  private updateGlowSprites(): void {
-    // Remove existing
-    for (const sprite of this.glowSprites) {
-      this.group.remove(sprite);
-      sprite.material.dispose();
-    }
-    this.glowSprites = [];
+  private updateRiskLabels(): void {
+    // Remove existing labels
+    for (const label of this.riskLabels) label.remove();
+    this.riskLabels = [];
 
     const count = Math.min(this.nodes.length, this.maxCount);
     for (let i = 0; i < count; i++) {
-      const s = this.states[i];
-      if (s.tEmissive <= 0) continue;
+      const node = this.nodes[i];
+      if (node.risk_score < RISK_LABEL_THRESHOLD) continue;
 
-      // D) Softer halo — warm tones blended with node color, lower opacity
-      const glowColor = new THREE.Color().setRGB(s.tr, s.tg, s.tb);
-      glowColor.lerp(new THREE.Color(0xff6633), 0.5); // warm risk tint
+      const label = document.createElement("div");
+      label.className = "node-risk-label";
+      label.textContent = `${(node.risk_score * 100).toFixed(0)}%`;
 
-      const mat = new THREE.SpriteMaterial({
-        map: this.glowMap,
-        color: glowColor,
-        transparent: true,
-        opacity: s.tEmissive * 0.45,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
+      // Color the label text by risk level
+      const c = riskColor(node.risk_score);
+      label.style.color = `#${c.getHexString()}`;
 
-      const sprite = new THREE.Sprite(mat);
-      // Wider halo for premium feel
-      const glowScale = s.tScale * (2.5 + s.tEmissive * 2.1);
-      sprite.scale.setScalar(glowScale);
-      sprite.position.set(s.px, s.py, s.pz);
-      (sprite as unknown as Record<string, number>).__globalIdx = i;
-
-      this.group.add(sprite);
-      this.glowSprites.push(sprite);
+      this.riskLabelContainer.appendChild(label);
+      this.riskLabels.push(label);
+      (label as unknown as Record<string, number>).__globalIdx = i;
     }
   }
 
-  private animateGlowSprites(): void {
-    const time = performance.now() * 0.001;
-    for (const sprite of this.glowSprites) {
-      const gi = (sprite as unknown as Record<string, number>).__globalIdx;
+  private projectRiskLabels(camera: THREE.PerspectiveCamera): void {
+    const _v = new THREE.Vector3();
+    for (const label of this.riskLabels) {
+      const gi = (label as unknown as Record<string, number>).__globalIdx;
       const s = this.states[gi];
-      if (!s) continue;
-      sprite.position.set(s.px, s.py, s.pz);
+      if (!s) { label.style.display = "none"; continue; }
 
-      // Smooth breathing pulse — slower, more organic
-      const phase = time * (Math.PI * 2 / PULSE_PERIOD) + gi * 0.9;
-      const pulse = 1 + Math.sin(phase) * 0.12 * s.emissive;
-      const glowScale = s.scale * (2.5 + s.emissive * 2.1) * pulse;
-      sprite.scale.setScalar(glowScale);
+      _v.set(s.px, s.py + s.scale + 0.15, s.pz);
+      _v.project(camera);
 
-      // Gentle opacity breathing
-      const mat = sprite.material as THREE.SpriteMaterial;
-      mat.opacity = s.emissive * 0.4 * (0.88 + Math.sin(phase * 0.7) * 0.12);
+      if (_v.z > 1) { label.style.display = "none"; continue; }
+
+      const rect = this.riskLabelContainer.getBoundingClientRect();
+      const x = (_v.x * 0.5 + 0.5) * rect.width;
+      const y = (-_v.y * 0.5 + 0.5) * rect.height;
+
+      label.style.display = "block";
+      label.style.left = `${x}px`;
+      label.style.top = `${y}px`;
+
+      // Fade by distance
+      const dist = camera.position.distanceTo(new THREE.Vector3(s.px, s.py, s.pz));
+      const opacity = dist < 8 ? 1 : dist > 50 ? 0 : 1 - (dist - 8) / 42;
+      label.style.opacity = String(opacity);
     }
   }
 

@@ -1,0 +1,28 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+      - backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+
+      - name: Copy deploy script to VPS
+        run: |
+          scp -i ~/.ssh/deploy_key .github/deploy.sh ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/tmp/deploy.sh
+
+      - name: Run deploy on VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }} "bash /tmp/deploy.sh '${{ secrets.PROJECT_DIR }}' '${{ secrets.DATA_DIR }}' '${{ secrets.LOGS_DIR }}' '${{ secrets.HOST_PORT }}' '${{ secrets.ENV_FILE }}'"

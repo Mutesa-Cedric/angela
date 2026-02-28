@@ -6,7 +6,7 @@ let debounceTimer: number | null = null;
 
 slider.addEventListener("input", () => {
   const t = parseInt(slider.value, 10);
-  sliderLabel.textContent = `Bucket ${t}`;
+  sliderLabel.textContent = `Window ${t + 1}`;
 
   if (debounceTimer !== null) clearTimeout(debounceTimer);
   debounceTimer = window.setTimeout(() => {
@@ -18,7 +18,7 @@ export function init(nBuckets: number, initial: number = 0): void {
   slider.min = "0";
   slider.max = String(nBuckets - 1);
   slider.value = String(initial);
-  sliderLabel.textContent = `Bucket ${initial}`;
+  sliderLabel.textContent = `Window ${initial + 1}`;
 }
 
 export function onChange(cb: (t: number) => void): void {

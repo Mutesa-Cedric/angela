@@ -20,8 +20,8 @@ export ANGELA_DATA_DIR="${DATA_DIR}"
 export ANGELA_LOGS_DIR="${LOGS_DIR}"
 export ANGELA_HOST_PORT="${HOST_PORT:-3000}"
 
-# Copy env file if provided
-if [ -f "$ENV_FILE" ]; then
+# Copy env file if provided and it's not already .env
+if [ -f "$ENV_FILE" ] && [ "$ENV_FILE" != ".env" ]; then
     cp "$ENV_FILE" .env
 fi
 

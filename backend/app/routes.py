@@ -103,6 +103,13 @@ async def get_snapshot(t: int = Query(..., description="Time bucket index")) -> 
     if not active_ids:
         active_ids = {e["id"] for e in store.entities}
 
+    # Precompute per-entity volume for this bucket
+    bucket_tx = store.get_bucket_transactions(t)
+    entity_volume: dict[str, float] = {}
+    for tx in bucket_tx:
+        entity_volume[tx["from_id"]] = entity_volume.get(tx["from_id"], 0.0) + tx["amount"]
+        entity_volume[tx["to_id"]] = entity_volume.get(tx["to_id"], 0.0) + tx["amount"]
+
     nodes = []
     for eid in sorted(active_ids):
         entity = store.get_entity(eid)
@@ -114,11 +121,10 @@ async def get_snapshot(t: int = Query(..., description="Time bucket index")) -> 
                     jurisdiction_bucket=entity["jurisdiction_bucket"],
                     kyc_level=entity["kyc_level"],
                     risk_score=risk["risk_score"],
+                    entity_type=entity.get("type", "account"),
+                    volume=entity_volume.get(eid, 0.0),
                 )
             )
-
-    # Get edges for this bucket
-    bucket_tx = store.get_bucket_transactions(t)
     edges = [
         {"from_id": tx["from_id"], "to_id": tx["to_id"], "amount": tx["amount"]}
         for tx in bucket_tx
@@ -221,6 +227,12 @@ async def get_neighbors(
                 seen_edges.add(edge_key)
                 edges.append({"from_id": tx["from_id"], "to_id": tx["to_id"], "amount": tx["amount"]})
 
+    # Compute per-entity volume from bucket transactions
+    entity_volume: dict[str, float] = {}
+    for tx in bucket_tx:
+        entity_volume[tx["from_id"]] = entity_volume.get(tx["from_id"], 0.0) + tx["amount"]
+        entity_volume[tx["to_id"]] = entity_volume.get(tx["to_id"], 0.0) + tx["amount"]
+
     # Build node list
     nodes = []
     for eid in sorted(visited):
@@ -233,6 +245,8 @@ async def get_neighbors(
                     jurisdiction_bucket=ent["jurisdiction_bucket"],
                     kyc_level=ent["kyc_level"],
                     risk_score=risk["risk_score"],
+                    entity_type=ent.get("type", "account"),
+                    volume=entity_volume.get(eid, 0.0),
                 )
             )
 

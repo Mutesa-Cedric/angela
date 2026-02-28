@@ -84,19 +84,39 @@
     <!-- Legend -->
     <div id="legend">
       <div class="legend-title">ANGELA</div>
+      <div class="legend-section-label">Node Shape</div>
       <div class="legend-row">
-        <span class="legend-gradient"></span>
-        <span>Risk: Low → High</span>
+        <span class="legend-swatch" style="border-radius:50%; background:#4488ff;"></span>
+        <span>Account</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch" style="border-radius:2px; background:#aa66ff;"></span>
+        <span>Merchant / Company</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-swatch legend-diamond"></span>
+        <span>Bank / Gov</span>
+      </div>
+      <div class="legend-divider"></div>
+      <div class="legend-section-label">Encoding</div>
+      <div class="legend-row">
+        <span class="legend-icon">◉</span>
+        <span>Size = Tx Volume</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-jurisdiction-bar"></span>
+        <span>Color = Jurisdiction</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-glow-icon"></span>
+        <span>Glow = Risk Level</span>
       </div>
       <div class="legend-row">
         <span class="legend-swatch" style="background:#ffffff; border: 1px solid #444;"></span>
         <span>Selected</span>
       </div>
-      <div class="legend-row">
-        <span class="legend-icon">◉</span>
-        <span>Size = Risk Level</span>
-      </div>
       <div class="legend-divider"></div>
+      <div class="legend-section-label">Axes</div>
       <div class="legend-row">
         <span class="legend-icon">Y</span>
         <span>Height = Risk Score</span>
@@ -110,6 +130,7 @@
         <span>Depth = KYC Level</span>
       </div>
       <div class="legend-divider"></div>
+      <div class="legend-section-label">Edges</div>
       <div class="legend-row">
         <span class="legend-gradient"></span>
         <span>Edge Risk + Flow</span>

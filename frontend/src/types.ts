@@ -3,6 +3,8 @@ export interface SnapshotNode {
   jurisdiction_bucket: number;
   kyc_level: string;
   risk_score: number;
+  entity_type: string;
+  volume: number;
 }
 
 export interface SnapshotEdge {

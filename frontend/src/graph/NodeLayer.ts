@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { SnapshotNode } from "../types";
 import { computePositions } from "../layout";
+import { entityShape, getGeometry, type EntityShape } from "./NodeFactory";
 
 const SELECTED_COLOR = new THREE.Color(0xffffff);
 
@@ -8,6 +9,33 @@ const _dummy = new THREE.Object3D();
 const _color = new THREE.Color();
 const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
+
+// ── Visual encoding constants ──────────────────────────────────────────
+
+/** Log-scaled volume → radius. */
+const MIN_RADIUS = 0.10;
+const MAX_RADIUS = 0.55;
+
+/** Risk glow thresholds. */
+const GLOW_RISK_MIN = 0.35;
+const GLOW_RISK_FULL = 0.75;
+
+/** Jurisdiction → color palette (8 slots). */
+const JURISDICTION_COLORS: number[] = [
+  0x4488ff, // 0 — blue
+  0x22aa88, // 1 — teal
+  0xaa66ff, // 2 — purple
+  0xff8844, // 3 — orange
+  0x44dddd, // 4 — cyan
+  0xffcc22, // 5 — gold
+  0xff5588, // 6 — pink
+  0x88cc44, // 7 — lime
+];
+
+/** Transition speed (seconds for full lerp). */
+const TRANSITION_DURATION = 0.6;
+
+// ── Helpers ────────────────────────────────────────────────────────────
 
 /** Map risk [0,1] to a continuous color gradient. */
 function riskColor(risk: number): THREE.Color {
@@ -25,114 +53,379 @@ export function riskColorCSS(risk: number): string {
   return `#${riskColor(risk).getHexString()}`;
 }
 
-export class NodeLayer {
+/** Jurisdiction bucket → THREE.Color. */
+function jurisdictionColor(bucket: number): THREE.Color {
+  return _tmpA.set(JURISDICTION_COLORS[bucket % JURISDICTION_COLORS.length]);
+}
+
+/** Volume → log-scaled radius clamped between MIN/MAX. */
+function volumeToRadius(volume: number): number {
+  if (volume <= 0) return MIN_RADIUS;
+  // log1p to handle 0 gracefully; normalize against typical range
+  const t = Math.log1p(volume) / Math.log1p(500_000); // ~500k as "large"
+  return MIN_RADIUS + Math.min(t, 1) * (MAX_RADIUS - MIN_RADIUS);
+}
+
+// ── Per-instance animated state ────────────────────────────────────────
+
+interface NodeState {
+  // Current (animated)
+  px: number; py: number; pz: number;
+  scale: number;
+  r: number; g: number; b: number;
+  emissive: number;
+  // Target
+  tx: number; ty: number; tz: number;
+  tScale: number;
+  tr: number; tg: number; tb: number;
+  tEmissive: number;
+}
+
+// ── Per-shape InstancedMesh group ──────────────────────────────────────
+
+interface ShapeMesh {
   mesh: THREE.InstancedMesh;
-  private idToIndex: Map<string, number> = new Map();
-  private indexToId: Map<number, string> = new Map();
+  shape: EntityShape;
+  /** Which global node index maps to which instance index within this mesh. */
+  globalToLocal: Map<number, number>;
+}
+
+// ── NodeLayer ──────────────────────────────────────────────────────────
+
+export class NodeLayer {
+  /** Parent group added to the scene. */
+  group: THREE.Group;
+
+  private meshes: Map<EntityShape, ShapeMesh> = new Map();
+  private idToGlobal: Map<string, number> = new Map();
+  private globalToId: Map<number, string> = new Map();
   private nodes: SnapshotNode[] = [];
+  private states: NodeState[] = [];
   private selectedIndex: number = -1;
   private maxCount: number;
+  private needsTransition = false;
+
+  /** Glow sprites for high-risk nodes. */
+  private glowSprites: THREE.Sprite[] = [];
+  private glowMap: THREE.Texture;
 
   constructor(maxCount: number = 5000) {
     this.maxCount = maxCount;
-    // Unit sphere — scaled per-instance by risk
-    const geometry = new THREE.SphereGeometry(1, 16, 16);
-    const material = new THREE.MeshStandardMaterial({
-      vertexColors: false,
-      roughness: 0.35,
-      metalness: 0.1,
-      emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 0.25,
-    });
+    this.group = new THREE.Group();
+    this.group.name = "NodeLayer";
 
-    this.mesh = new THREE.InstancedMesh(geometry, material, maxCount);
-    this.mesh.count = 0;
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Create InstancedMesh for each shape
+    for (const shape of ["sphere", "box", "diamond"] as EntityShape[]) {
+      const geo = getGeometry(
+        shape === "sphere" ? "account" : shape === "box" ? "merchant" : "bank",
+        "hi",
+      );
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: false,
+        roughness: 0.3,
+        metalness: 0.15,
+        emissive: new THREE.Color(0x000000),
+        emissiveIntensity: 0,
+      });
 
-    // Enable instance color
-    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(
-      new Float32Array(maxCount * 3),
-      3,
-    );
-    this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      const mesh = new THREE.InstancedMesh(geo, mat, maxCount);
+      mesh.count = 0;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(
+        new Float32Array(maxCount * 3),
+        3,
+      );
+      mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      mesh.frustumCulled = false;
+      mesh.name = `nodes_${shape}`;
+
+      this.meshes.set(shape, { mesh, shape, globalToLocal: new Map() });
+      this.group.add(mesh);
+    }
+
+    // Glow texture — procedural radial gradient
+    this.glowMap = this.createGlowTexture();
   }
 
+  /** Convenience: the primary mesh for raycasting (sphere — most common). */
+  get allMeshes(): THREE.InstancedMesh[] {
+    return [...this.meshes.values()].map((s) => s.mesh);
+  }
+
+  // ── Update (new bucket data) ──────────────────────────────────────
+
   update(nodes: SnapshotNode[]): void {
+    const prevIds = new Map(this.idToGlobal);
     this.nodes = nodes;
-    this.idToIndex.clear();
-    this.indexToId.clear();
+    this.idToGlobal.clear();
+    this.globalToId.clear();
+
+    // Distribute nodes to shapes
+    const shapeIndices: Map<EntityShape, number[]> = new Map([
+      ["sphere", []],
+      ["box", []],
+      ["diamond", []],
+    ]);
 
     const count = Math.min(nodes.length, this.maxCount);
-    this.mesh.count = count;
-
     const positions = computePositions(nodes);
+
+    // Resize state array
+    while (this.states.length < count) {
+      this.states.push({
+        px: 0, py: 0, pz: 0, scale: 0, r: 0, g: 0, b: 0, emissive: 0,
+        tx: 0, ty: 0, tz: 0, tScale: 0, tr: 0, tg: 0, tb: 0, tEmissive: 0,
+      });
+    }
 
     for (let i = 0; i < count; i++) {
       const node = nodes[i];
-      this.idToIndex.set(node.id, i);
-      this.indexToId.set(i, node.id);
+      this.idToGlobal.set(node.id, i);
+      this.globalToId.set(i, node.id);
 
-      // Position + risk-based scale
-      const radius = 0.08 + node.risk_score * 0.37;
-      _dummy.position.set(
-        positions[i * 3],
-        positions[i * 3 + 1],
-        positions[i * 3 + 2],
-      );
-      _dummy.scale.setScalar(radius);
-      _dummy.updateMatrix();
-      this.mesh.setMatrixAt(i, _dummy.matrix);
+      const shape = entityShape(node.entity_type);
+      shapeIndices.get(shape)!.push(i);
 
-      // Color
-      this.setInstanceColor(i, node);
+      // Compute targets
+      const radius = volumeToRadius(node.volume);
+      const jColor = jurisdictionColor(node.jurisdiction_bucket);
+      const riskT = node.risk_score;
+      // Blend jurisdiction color with risk tint for high-risk entities
+      const finalColor = _tmpA
+        .copy(jColor)
+        .lerp(riskColor(riskT), Math.min(riskT * 1.5, 0.8));
+
+      const emissive =
+        riskT >= GLOW_RISK_FULL
+          ? 1.0
+          : riskT >= GLOW_RISK_MIN
+            ? (riskT - GLOW_RISK_MIN) / (GLOW_RISK_FULL - GLOW_RISK_MIN)
+            : 0;
+
+      const s = this.states[i];
+      s.tx = positions[i * 3];
+      s.ty = positions[i * 3 + 1];
+      s.tz = positions[i * 3 + 2];
+      s.tScale = radius;
+      s.tr = finalColor.r;
+      s.tg = finalColor.g;
+      s.tb = finalColor.b;
+      s.tEmissive = emissive;
+
+      // If this node is new (wasn't in previous bucket), snap to target
+      if (!prevIds.has(node.id)) {
+        s.px = s.tx;
+        s.py = s.ty;
+        s.pz = s.tz;
+        s.scale = s.tScale;
+        s.r = s.tr;
+        s.g = s.tg;
+        s.b = s.tb;
+        s.emissive = s.tEmissive;
+      }
     }
 
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    this.mesh.computeBoundingSphere();
+    // Update per-shape meshes
+    for (const [shape, sm] of this.meshes) {
+      const indices = shapeIndices.get(shape) ?? [];
+      sm.mesh.count = indices.length;
+      sm.globalToLocal.clear();
+
+      for (let local = 0; local < indices.length; local++) {
+        const global = indices[local];
+        sm.globalToLocal.set(global, local);
+        this.applyInstance(sm, local, global);
+      }
+
+      sm.mesh.instanceMatrix.needsUpdate = true;
+      if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
+      sm.mesh.computeBoundingSphere();
+    }
+
+    this.needsTransition = true;
+    this.updateGlowSprites();
   }
 
-  private setInstanceColor(i: number, node: SnapshotNode): void {
-    if (i === this.selectedIndex) {
+  // ── Apply instance matrix + color ──────────────────────────────────
+
+  private applyInstance(sm: ShapeMesh, localIdx: number, globalIdx: number): void {
+    const s = this.states[globalIdx];
+
+    _dummy.position.set(s.px, s.py, s.pz);
+    _dummy.scale.setScalar(s.scale);
+    _dummy.updateMatrix();
+    sm.mesh.setMatrixAt(localIdx, _dummy.matrix);
+
+    if (globalIdx === this.selectedIndex) {
       _color.copy(SELECTED_COLOR);
     } else {
-      _color.copy(riskColor(node.risk_score));
+      _color.setRGB(s.r, s.g, s.b);
     }
-    this.mesh.setColorAt(i, _color);
+    sm.mesh.setColorAt(localIdx, _color);
+
+    // Per-instance emissive via material (shared) — we'll drive it from glow sprites instead
   }
 
-  getEntityId(instanceId: number): string | undefined {
-    return this.indexToId.get(instanceId);
+  // ── Per-frame animation tick ─────────────────────────────────────
+
+  animate(dt: number): void {
+    if (!this.needsTransition) return;
+
+    const alpha = Math.min(dt / TRANSITION_DURATION, 1);
+    let allDone = true;
+
+    const count = Math.min(this.nodes.length, this.maxCount);
+    for (let i = 0; i < count; i++) {
+      const s = this.states[i];
+      s.px += (s.tx - s.px) * alpha * 3;
+      s.py += (s.ty - s.py) * alpha * 3;
+      s.pz += (s.tz - s.pz) * alpha * 3;
+      s.scale += (s.tScale - s.scale) * alpha * 3;
+      s.r += (s.tr - s.r) * alpha * 3;
+      s.g += (s.tg - s.g) * alpha * 3;
+      s.b += (s.tb - s.b) * alpha * 3;
+      s.emissive += (s.tEmissive - s.emissive) * alpha * 3;
+
+      if (
+        Math.abs(s.tx - s.px) > 0.001 ||
+        Math.abs(s.ty - s.py) > 0.001 ||
+        Math.abs(s.tz - s.pz) > 0.001 ||
+        Math.abs(s.tScale - s.scale) > 0.001
+      ) {
+        allDone = false;
+      }
+    }
+
+    // Write back to meshes
+    for (const sm of this.meshes.values()) {
+      for (const [global, local] of sm.globalToLocal) {
+        this.applyInstance(sm, local, global);
+      }
+      sm.mesh.instanceMatrix.needsUpdate = true;
+      if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
+    }
+
+    // Animate glow sprites
+    this.animateGlowSprites();
+
+    if (allDone) this.needsTransition = false;
   }
 
-  getInstanceId(entityId: string): number | undefined {
-    return this.idToIndex.get(entityId);
+  // ── Glow sprites ────────────────────────────────────────────────
+
+  private createGlowTexture(): THREE.Texture {
+    const size = 64;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const c = canvas.getContext("2d")!;
+    const gradient = c.createRadialGradient(
+      size / 2, size / 2, 0,
+      size / 2, size / 2, size / 2,
+    );
+    gradient.addColorStop(0, "rgba(255,255,255,0.6)");
+    gradient.addColorStop(0.4, "rgba(255,100,50,0.2)");
+    gradient.addColorStop(1, "rgba(255,50,30,0.0)");
+    c.fillStyle = gradient;
+    c.fillRect(0, 0, size, size);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
   }
+
+  private updateGlowSprites(): void {
+    // Remove existing
+    for (const sprite of this.glowSprites) {
+      this.group.remove(sprite);
+      sprite.material.dispose();
+    }
+    this.glowSprites = [];
+
+    const count = Math.min(this.nodes.length, this.maxCount);
+    for (let i = 0; i < count; i++) {
+      const s = this.states[i];
+      if (s.tEmissive <= 0) continue;
+
+      const mat = new THREE.SpriteMaterial({
+        map: this.glowMap,
+        color: new THREE.Color().setRGB(s.tr, s.tg, s.tb),
+        transparent: true,
+        opacity: s.tEmissive * 0.6,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      const glowScale = s.tScale * (2.5 + s.tEmissive * 2);
+      sprite.scale.setScalar(glowScale);
+      sprite.position.set(s.px, s.py, s.pz);
+      (sprite as unknown as Record<string, number>).__globalIdx = i;
+
+      this.group.add(sprite);
+      this.glowSprites.push(sprite);
+    }
+  }
+
+  private animateGlowSprites(): void {
+    const time = performance.now() * 0.001;
+    for (const sprite of this.glowSprites) {
+      const gi = (sprite as unknown as Record<string, number>).__globalIdx;
+      const s = this.states[gi];
+      if (!s) continue;
+      sprite.position.set(s.px, s.py, s.pz);
+
+      // Pulse for high-risk nodes
+      const pulse = 1 + Math.sin(time * 2.5 + gi * 0.7) * 0.15 * s.emissive;
+      const glowScale = s.scale * (2.5 + s.emissive * 2) * pulse;
+      sprite.scale.setScalar(glowScale);
+
+      const mat = sprite.material as THREE.SpriteMaterial;
+      mat.opacity = s.emissive * 0.5 * (0.85 + Math.sin(time * 3 + gi) * 0.15);
+    }
+  }
+
+  // ── Selection ───────────────────────────────────────────────────
 
   select(entityId: string | null): void {
     const prevIndex = this.selectedIndex;
-    this.selectedIndex = entityId ? (this.idToIndex.get(entityId) ?? -1) : -1;
+    this.selectedIndex = entityId ? (this.idToGlobal.get(entityId) ?? -1) : -1;
 
-    // Restore previous color
-    if (prevIndex >= 0 && prevIndex < this.nodes.length) {
-      this.setInstanceColor(prevIndex, this.nodes[prevIndex]);
+    // Refresh colors for prev and new selection
+    for (const idx of [prevIndex, this.selectedIndex]) {
+      if (idx < 0 || idx >= this.nodes.length) continue;
+      const shape = entityShape(this.nodes[idx].entity_type);
+      const sm = this.meshes.get(shape);
+      if (!sm) continue;
+      const local = sm.globalToLocal.get(idx);
+      if (local !== undefined) {
+        this.applyInstance(sm, local, idx);
+        if (sm.mesh.instanceColor) sm.mesh.instanceColor.needsUpdate = true;
+      }
     }
+  }
 
-    // Set new selection color
-    if (this.selectedIndex >= 0 && this.selectedIndex < this.nodes.length) {
-      this.setInstanceColor(this.selectedIndex, this.nodes[this.selectedIndex]);
+  // ── Lookup helpers ──────────────────────────────────────────────
+
+  getEntityId(instanceId: number, mesh?: THREE.InstancedMesh): string | undefined {
+    // Find which shape mesh was hit and reverse-map
+    for (const sm of this.meshes.values()) {
+      if (mesh && sm.mesh !== mesh) continue;
+      for (const [global, local] of sm.globalToLocal) {
+        if (local === instanceId) return this.globalToId.get(global);
+      }
     }
+    return undefined;
+  }
 
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  getInstanceId(entityId: string): number | undefined {
+    return this.idToGlobal.get(entityId);
   }
 
   getPosition(entityId: string): THREE.Vector3 | null {
-    const idx = this.idToIndex.get(entityId);
+    const idx = this.idToGlobal.get(entityId);
     if (idx === undefined) return null;
-    const matrix = new THREE.Matrix4();
-    this.mesh.getMatrixAt(idx, matrix);
-    const pos = new THREE.Vector3();
-    pos.setFromMatrixPosition(matrix);
-    return pos;
+    const s = this.states[idx];
+    if (!s) return null;
+    return new THREE.Vector3(s.px, s.py, s.pz);
   }
 }

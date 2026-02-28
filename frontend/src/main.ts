@@ -1,4 +1,5 @@
 import "./style.css";
+import * as THREE from "three";
 import { initScene } from "./scene";
 import { NodeLayer, riskColorCSS } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
@@ -19,7 +20,7 @@ if (!canvas) throw new Error("Canvas element #scene-canvas not found");
 
 const ctx = initScene(canvas);
 const nodeLayer = new NodeLayer(5000);
-ctx.scene.add(nodeLayer.mesh);
+ctx.scene.add(nodeLayer.group);
 const edgeLayer = new EdgeLayer(ctx.scene);
 const assetLayer = new AssetLayer(ctx.scene);
 
@@ -137,10 +138,11 @@ canvas.addEventListener("pointerdown", (e) => {
   ctx.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
   ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera);
-  const hits = ctx.raycaster.intersectObject(nodeLayer.mesh, false);
+  const hits = ctx.raycaster.intersectObjects(nodeLayer.allMeshes, false);
 
   if (hits.length > 0 && hits[0].instanceId !== undefined) {
-    const entityId = nodeLayer.getEntityId(hits[0].instanceId);
+    const hitMesh = hits[0].object as THREE.InstancedMesh;
+    const entityId = nodeLayer.getEntityId(hits[0].instanceId, hitMesh);
     if (entityId) selectEntity(entityId);
   } else {
     selectEntity(null);
@@ -260,19 +262,22 @@ canvas.addEventListener("pointermove", (e) => {
   ctx.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
   ctx.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
   ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera);
-  const hits = ctx.raycaster.intersectObject(nodeLayer.mesh, false);
+  const hits = ctx.raycaster.intersectObjects(nodeLayer.allMeshes, false);
 
   if (hits.length > 0 && hits[0].instanceId !== undefined) {
-    const entityId = nodeLayer.getEntityId(hits[0].instanceId);
+    const hitMesh = hits[0].object as THREE.InstancedMesh;
+    const entityId = nodeLayer.getEntityId(hits[0].instanceId, hitMesh);
     if (entityId && entityId !== hoveredId) {
       hoveredId = entityId;
       const node = currentSnapshot?.nodes.find((n) => n.id === entityId);
       if (node) {
         tooltip.innerHTML = `
           <div class="tooltip-id">${entityId}</div>
+          <div class="tooltip-type">${node.entity_type}</div>
           <div class="tooltip-risk" style="color:${riskColorCSS(node.risk_score)}">
             Risk: ${(node.risk_score * 100).toFixed(0)}%
           </div>
+          <div class="tooltip-vol">Vol: $${node.volume >= 1000 ? (node.volume / 1000).toFixed(1) + "K" : node.volume.toFixed(0)}</div>
         `;
       }
     }
@@ -292,6 +297,7 @@ ctx.onFrame(() => {
   const dt = (now - lastFrameTime) / 1000;
   lastFrameTime = now;
 
+  nodeLayer.animate(dt);
   assetLayer.animate();
   edgeLayer.animate(dt);
   stats.tick();

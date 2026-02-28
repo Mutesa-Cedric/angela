@@ -15,6 +15,8 @@ class SnapshotNode(BaseModel):
     jurisdiction_bucket: int
     kyc_level: str
     risk_score: float
+    entity_type: str = "account"
+    volume: float = 0.0
 
 
 class SnapshotMeta(BaseModel):

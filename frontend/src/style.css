@@ -10,10 +10,162 @@ body {
   height: 100%;
   overflow: hidden;
   background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #e0e0e0;
 }
 
 #scene-canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* Time slider */
+#time-controls {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(10, 10, 20, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(68, 136, 255, 0.3);
+  z-index: 10;
+}
+
+#time-label {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 70px;
+}
+
+#time-slider {
+  width: 300px;
+  accent-color: #4488ff;
+}
+
+/* Entity panel */
+#entity-panel {
+  position: fixed;
+  top: 0;
+  right: -360px;
+  width: 340px;
+  height: 100%;
+  background: rgba(10, 10, 20, 0.92);
+  backdrop-filter: blur(12px);
+  border-left: 1px solid rgba(68, 136, 255, 0.3);
+  padding: 20px;
+  overflow-y: auto;
+  transition: right 0.25s ease;
+  z-index: 20;
+}
+
+#entity-panel.open {
+  right: 0;
+}
+
+#panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+#panel-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#panel-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+#panel-close:hover {
+  color: #fff;
+}
+
+.entity-id {
+  font-family: monospace;
+  font-size: 13px;
+  color: #4488ff;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.stat-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(68, 136, 255, 0.15);
+  border: 1px solid rgba(68, 136, 255, 0.3);
+}
+
+.risk-score {
+  margin-bottom: 16px;
+}
+
+.risk-score label {
+  font-size: 12px;
+  color: #888;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.risk-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.risk-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #44ff88, #ffaa00, #ff4444);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.risk-score span {
+  font-size: 12px;
+  color: #888;
+}
+
+#panel-content h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #aaa;
+}
+
+.reason {
+  font-size: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.reason .weight {
+  color: #666;
+}
+
+.muted {
+  color: #666;
+  font-size: 12px;
 }

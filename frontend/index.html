@@ -7,6 +7,22 @@
   </head>
   <body>
     <canvas id="scene-canvas"></canvas>
+
+    <!-- Time slider -->
+    <div id="time-controls">
+      <span id="time-label">Bucket 0</span>
+      <input type="range" id="time-slider" min="0" max="0" value="0" />
+    </div>
+
+    <!-- Entity detail panel -->
+    <div id="entity-panel">
+      <div id="panel-header">
+        <h2>Entity Detail</h2>
+        <button id="panel-close">&times;</button>
+      </div>
+      <div id="panel-content"></div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

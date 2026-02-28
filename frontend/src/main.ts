@@ -674,6 +674,34 @@ const agentMiniState = document.getElementById("agent-mini-state") as HTMLSpanEl
 const agentMiniOpen = document.getElementById("agent-mini-open") as HTMLButtonElement;
 const agentHistory = document.getElementById("agent-history") as HTMLDivElement;
 
+// NLQ toast
+const nlqToast = document.getElementById("nlq-toast") as HTMLDivElement;
+const nlqToastTitle = document.getElementById("nlq-toast-title") as HTMLSpanElement;
+const nlqToastCount = document.getElementById("nlq-toast-count") as HTMLSpanElement;
+const nlqToastSummary = document.getElementById("nlq-toast-summary") as HTMLDivElement;
+const nlqToastClose = document.getElementById("nlq-toast-close") as HTMLButtonElement;
+let nlqToastTimer: ReturnType<typeof setTimeout> | null = null;
+
+function showNlqToast(interpretation: string, entityCount: number, summary: string): void {
+  nlqToastTitle.textContent = interpretation;
+  nlqToastCount.textContent = entityCount > 0 ? `${entityCount} ${entityCount === 1 ? "entity" : "entities"}` : "0 matches";
+  nlqToastSummary.textContent = summary;
+  nlqToast.classList.add("visible");
+
+  if (nlqToastTimer) clearTimeout(nlqToastTimer);
+  nlqToastTimer = setTimeout(() => {
+    nlqToast.classList.remove("visible");
+    nlqToastTimer = null;
+  }, 5000);
+}
+
+function hideNlqToast(): void {
+  nlqToast.classList.remove("visible");
+  if (nlqToastTimer) { clearTimeout(nlqToastTimer); nlqToastTimer = null; }
+}
+
+nlqToastClose.addEventListener("click", hideNlqToast);
+
 type AgentProfile = "fast" | "balanced" | "deep";
 
 let nlqAbortController: AbortController | null = null;
@@ -888,10 +916,6 @@ async function runAgentFlow(): Promise<void> {
 
     activeAgentRunId = result.run_id;
     agentPanel.setRunId(result.run_id);
-    agentPanel.updateStep("intake", "completed");
-    agentPanel.updateStep("research", "completed");
-    agentPanel.updateStep("analysis", "completed");
-    agentPanel.updateStep("reporting", "completed");
     agentPanel.setResult(result);
 
     agentMiniState.textContent = "Completed";
@@ -942,7 +966,7 @@ async function runNLQ(): Promise<void> {
     nlqResult.style.display = "flex";
     nlqClear.style.display = "inline-block";
 
-    // Highlight matching nodes
+    // Highlight matching nodes and focus camera
     if (result.entity_ids.length > 0) {
       nodeLayer.highlight(result.entity_ids);
 
@@ -952,10 +976,19 @@ async function runNLQ(): Promise<void> {
         riskScores.set(node.id, node.risk_score);
       }
       edgeLayer.update(result.edges, nodeLayer, riskScores);
+
+      // Fly camera to the matched entities
+      camera.focusGroup(ctx, nodeLayer, result.entity_ids);
+
+      // Select the first entity to open its detail panel
+      if (result.entity_ids[0]) void selectEntity(result.entity_ids[0]);
     } else {
       nodeLayer.clearHighlight();
       nlqSummary.textContent = "No matching entities found.";
     }
+
+    // Show toast notification
+    showNlqToast(query, result.entity_ids.length, result.summary);
   } catch (err) {
     if (requestSeq !== nlqRequestSeq || isAbortError(err)) return;
     nlqInterpretation.textContent = "Query failed";
@@ -977,6 +1010,7 @@ function clearNLQ(): void {
   nlqResult.style.display = "none";
   nlqClear.style.display = "none";
   nlqInput.value = "";
+  hideNlqToast();
   activeAgentRunId = null;
   agentPanel.reset();
   agentPanel.hide();

@@ -11,6 +11,8 @@ interface StepMeta {
   icon: string;
   description: string;
   cues: string[];
+  agentLabel: string;       // Sub-agent label for feed lines
+  simulatedDuration: number; // ms before auto-completing this step
 }
 
 const STEP_META: Record<StepName, StepMeta> = {
@@ -18,44 +20,56 @@ const STEP_META: Record<StepName, StepMeta> = {
     label: "Intake",
     icon: "1",
     description: "Parsing query intent and scoping investigation parameters",
+    agentLabel: "parser",
+    simulatedDuration: 1800,
     cues: [
-      "Parsing natural language query...",
-      "Identifying investigation scope...",
-      "Resolving entity references...",
-      "Building investigation plan...",
+      "Tokenizing natural language query…",
+      "Resolving entity references…",
+      "Identifying investigation scope…",
+      "Building execution plan…",
     ],
   },
   research: {
     label: "Research",
     icon: "2",
     description: "Scanning graph topology and gathering entity intelligence",
+    agentLabel: "graph-scan",
+    simulatedDuration: 3500,
     cues: [
-      "Scanning entity graph topology...",
-      "Gathering transaction patterns...",
-      "Cross-referencing data sources...",
-      "Identifying candidate targets...",
+      "Traversing entity adjacency graph…",
+      "Gathering transaction velocity signals…",
+      "Cross-referencing watchlist databases…",
+      "Mapping counterparty clusters…",
+      "Scoring candidate target set…",
     ],
   },
   analysis: {
     label: "Analysis",
     icon: "3",
     description: "Running risk models and anomaly detectors on targets",
+    agentLabel: "risk-engine",
+    simulatedDuration: 5000,
     cues: [
-      "Running anomaly detectors...",
-      "Computing risk attribution...",
-      "Evaluating velocity patterns...",
-      "Scoring structuring signals...",
+      "Initializing isolation forest model…",
+      "Computing velocity anomaly features…",
+      "Evaluating structuring detectors…",
+      "Scoring circular flow patterns…",
+      "Aggregating risk attribution vectors…",
+      "Ranking entities by composite score…",
     ],
   },
   reporting: {
     label: "Reporting",
     icon: "4",
     description: "Composing investigator briefing and evidence summary",
+    agentLabel: "narrator",
+    simulatedDuration: 0, // Stays running until real result
     cues: [
-      "Drafting investigation narrative...",
-      "Compiling evidence highlights...",
-      "Structuring briefing package...",
-      "Finalizing risk assessment...",
+      "Drafting investigation narrative…",
+      "Compiling evidence highlights…",
+      "Structuring briefing package…",
+      "Generating risk assessment summary…",
+      "Formatting entity profiles…",
     ],
   },
 };
@@ -99,6 +113,11 @@ let cueRotationInterval: ReturnType<typeof setInterval> | null = null;
 let cueIndices: Record<StepName, number> = { intake: 0, research: 0, analysis: 0, reporting: 0 };
 let currentResult: AgentInvestigateResult | null = null;
 
+// Simulation state
+let simulationTimers: ReturnType<typeof setTimeout>[] = [];
+let feedSimulationTimers: ReturnType<typeof setTimeout>[] = [];
+let simulationRunning = false;
+
 let onFocusGraphCb: ((entityIds: string[]) => void) | null = null;
 let onRetryCb: (() => void) | null = null;
 let onSarCb: ((entityId: string) => void) | null = null;
@@ -141,17 +160,19 @@ retryBtn.addEventListener("click", () => {
 // ── Public API ───────────────────────────────────────────────────────
 
 export function show(query: string): void {
-  panel.classList.add("open");
+  panel.classList.add("open", "processing");
   queryText.textContent = query;
   showProcessing();
   startTimer();
   startCueRotation();
+  startSimulatedCascade();
 }
 
 export function hide(): void {
-  panel.classList.remove("open");
+  panel.classList.remove("open", "processing");
   stopTimer();
   stopCueRotation();
+  stopSimulation();
 }
 
 export function setRunId(runId: string | null): void {
@@ -162,20 +183,44 @@ export function updateStep(step: StepName, status: StepStatus, detail?: string):
   stepStates[step] = status;
   renderSteps();
   updateProgress();
-  if (detail) appendFeedLine(step, detail);
+  if (detail) appendFeedLine(STEP_META[step].agentLabel, detail);
 }
 
 export function setResult(result: AgentInvestigateResult): void {
   currentResult = result;
   stopTimer();
   stopCueRotation();
-  showResults();
-  renderResultContent(result);
+  stopSimulation();
+
+  // Complete all steps immediately
+  for (const name of STEP_ORDER) {
+    stepStates[name] = "completed";
+  }
+  renderSteps();
+  progressFill.style.width = "100%";
+
+  // Brief pause to let the user see all-green before transitioning
+  setTimeout(() => {
+    panel.classList.remove("processing");
+    showResults();
+    renderResultContent(result);
+  }, 400);
 }
 
 export function setError(message: string): void {
   stopTimer();
   stopCueRotation();
+  stopSimulation();
+
+  // Fail the current running step
+  for (const name of STEP_ORDER) {
+    if (stepStates[name] === "running") {
+      stepStates[name] = "failed";
+      break;
+    }
+  }
+  renderSteps();
+  panel.classList.remove("processing");
   showError(message);
 }
 
@@ -185,8 +230,10 @@ export function reset(): void {
   currentResult = null;
   liveFeed.innerHTML = "";
   progressFill.style.width = "0%";
+  panel.classList.remove("processing");
   stopTimer();
   stopCueRotation();
+  stopSimulation();
 }
 
 export function initCallbacks(cbs: {
@@ -204,6 +251,7 @@ export function initCallbacks(cbs: {
 function showProcessing(): void {
   processingView.style.display = "";
   resultsView.style.display = "none";
+  resultsView.classList.remove("ap-revealing");
   errorView.style.display = "none";
   renderSteps();
 }
@@ -211,6 +259,7 @@ function showProcessing(): void {
 function showResults(): void {
   processingView.style.display = "none";
   resultsView.style.display = "";
+  resultsView.classList.add("ap-revealing");
   errorView.style.display = "none";
   switchTab("summary");
 }
@@ -220,6 +269,75 @@ function showError(msg: string): void {
   resultsView.style.display = "none";
   errorView.style.display = "flex";
   errorMsg.textContent = msg;
+}
+
+// ── Internal: simulated step cascade ─────────────────────────────────
+
+function startSimulatedCascade(): void {
+  stopSimulation();
+  simulationRunning = true;
+
+  let elapsed = 0;
+
+  for (let i = 0; i < STEP_ORDER.length; i++) {
+    const stepName = STEP_ORDER[i];
+    const meta = STEP_META[stepName];
+
+    // Start this step as "running"
+    const startDelay = elapsed;
+    const startTimer = setTimeout(() => {
+      if (!simulationRunning) return;
+      stepStates[stepName] = "running";
+      renderSteps();
+      updateProgress();
+      appendFeedLine(meta.agentLabel, `${meta.label} phase initiated`);
+
+      // Schedule feed messages from cues
+      scheduleFeedCues(stepName, meta);
+    }, startDelay);
+    simulationTimers.push(startTimer);
+
+    // Auto-complete this step (unless it's the last — reporting stays running)
+    if (meta.simulatedDuration > 0) {
+      elapsed += meta.simulatedDuration;
+      const completeDelay = elapsed;
+      const completeTimer = setTimeout(() => {
+        if (!simulationRunning) return;
+        stepStates[stepName] = "completed";
+        renderSteps();
+        updateProgress();
+        appendFeedLine(meta.agentLabel, `${meta.label} phase complete ✓`);
+      }, completeDelay);
+      simulationTimers.push(completeTimer);
+    } else {
+      // Last step: just start it at this offset
+      elapsed += 800; // Small gap before reporting starts
+    }
+  }
+}
+
+function scheduleFeedCues(stepName: StepName, meta: StepMeta): void {
+  const cues = meta.cues;
+  const interval = meta.simulatedDuration > 0
+    ? Math.min(800, meta.simulatedDuration / (cues.length + 1))
+    : 1500; // For reporting (stays running), slower feed
+
+  for (let j = 0; j < cues.length; j++) {
+    const timer = setTimeout(() => {
+      if (!simulationRunning) return;
+      if (stepStates[stepName] !== "running") return;
+      appendFeedLine(meta.agentLabel, cues[j]);
+    }, (j + 1) * interval);
+    feedSimulationTimers.push(timer);
+  }
+}
+
+function stopSimulation(): void {
+  simulationRunning = false;
+  for (const t of simulationTimers) clearTimeout(t);
+  for (const t of feedSimulationTimers) clearTimeout(t);
+  simulationTimers = [];
+  feedSimulationTimers = [];
 }
 
 // ── Internal: step rendering ─────────────────────────────────────────
@@ -275,7 +393,7 @@ function appendFeedLine(agent: string, detail: string): void {
     <span class="ap-feed-detail">${escapeHtml(detail)}</span>
   `;
   liveFeed.appendChild(line);
-  while (liveFeed.children.length > 30) liveFeed.removeChild(liveFeed.firstChild!);
+  while (liveFeed.children.length > 40) liveFeed.removeChild(liveFeed.firstChild!);
   liveFeed.scrollTop = liveFeed.scrollHeight;
 }
 
@@ -330,26 +448,30 @@ function renderResultContent(result: AgentInvestigateResult): void {
     </div>
   `;
 
-  // Metrics grid
-  const avgRisk = (result.analysis.average_risk * 100).toFixed(0);
-  const highRisk = result.analysis.high_risk_count;
-  const totalEntities = result.research.entity_ids.length;
+  // Metrics grid — values start at 0 and count up
+  const avgRiskFinal = Math.round(result.analysis.average_risk * 100);
+  const highRiskFinal = result.analysis.high_risk_count;
+  const totalEntitiesFinal = result.research.entity_ids.length;
+
   metricsGrid.innerHTML = `
     <div class="ap-metrics-grid">
       <div class="ap-metric-card">
-        <div class="ap-metric-value">${avgRisk}%</div>
+        <div class="ap-metric-value" data-countup="${avgRiskFinal}" data-suffix="%">0%</div>
         <div class="ap-metric-label">Avg Risk</div>
       </div>
       <div class="ap-metric-card">
-        <div class="ap-metric-value">${highRisk}</div>
+        <div class="ap-metric-value" data-countup="${highRiskFinal}" data-suffix="">0</div>
         <div class="ap-metric-label">High Risk</div>
       </div>
       <div class="ap-metric-card">
-        <div class="ap-metric-value">${totalEntities}</div>
+        <div class="ap-metric-value" data-countup="${totalEntitiesFinal}" data-suffix="">0</div>
         <div class="ap-metric-label">Entities</div>
       </div>
     </div>
   `;
+
+  // Start count-up animations
+  requestAnimationFrame(() => animateCountUps());
 
   // Detector counts
   const detCounts = result.analysis.detector_counts;
@@ -376,26 +498,34 @@ function renderResultContent(result: AgentInvestigateResult): void {
     researchSummary.innerHTML = "";
   }
 
-  // Entity cards
+  // Entity cards — render with 0-width risk bars, then animate
   const highlights = result.analysis.highlights ?? [];
   if (highlights.length > 0) {
-    entityCards.innerHTML = highlights.map((h) => {
+    entityCards.innerHTML = highlights.map((h, i) => {
       const riskPct = (h.risk_score * 100).toFixed(0);
       const riskClass = h.risk_score >= 0.7 ? "high" : h.risk_score >= 0.4 ? "medium" : "low";
       return `
-        <div class="ap-entity-card" data-entity-id="${escapeHtml(h.entity_id)}">
+        <div class="ap-entity-card ap-card-reveal" data-entity-id="${escapeHtml(h.entity_id)}" style="animation-delay: ${i * 100}ms">
           <div class="ap-entity-card-header">
             <span class="ap-entity-id">${escapeHtml(h.entity_id)}</span>
             <span class="ap-entity-risk ${riskClass}">${riskPct}%</span>
           </div>
           <div class="ap-entity-risk-bar">
-            <div class="ap-entity-risk-fill ${riskClass}" style="width: ${riskPct}%"></div>
+            <div class="ap-entity-risk-fill ${riskClass}" data-risk-width="${riskPct}" style="width: 0%"></div>
           </div>
           <div class="ap-entity-reason">${escapeHtml(h.top_reason)}</div>
           ${h.summary ? `<div class="ap-entity-summary">${escapeHtml(h.summary)}</div>` : ""}
         </div>
       `;
     }).join("");
+
+    // Animate risk bars after a frame
+    requestAnimationFrame(() => {
+      const fills = entityCards.querySelectorAll<HTMLDivElement>(".ap-entity-risk-fill[data-risk-width]");
+      for (const fill of Array.from(fills)) {
+        fill.style.width = `${fill.dataset.riskWidth}%`;
+      }
+    });
 
     // Wire click-to-focus on entity cards
     for (const card of Array.from(entityCards.querySelectorAll<HTMLDivElement>(".ap-entity-card"))) {
@@ -417,6 +547,32 @@ function renderResultContent(result: AgentInvestigateResult): void {
 
   // SAR button visibility
   sarBtn.style.display = result.reporting.sar ? "" : "none";
+}
+
+// ── Internal: count-up animation ─────────────────────────────────────
+
+function animateCountUps(): void {
+  const els = metricsGrid.querySelectorAll<HTMLDivElement>("[data-countup]");
+  const duration = 600;
+  const startTs = performance.now();
+
+  function tick() {
+    const elapsed = performance.now() - startTs;
+    const t = Math.min(elapsed / duration, 1);
+    // Ease-out cubic
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    for (const el of Array.from(els)) {
+      const target = parseInt(el.dataset.countup ?? "0", 10);
+      const suffix = el.dataset.suffix ?? "";
+      const current = Math.round(target * ease);
+      el.textContent = `${current}${suffix}`;
+    }
+
+    if (t < 1) requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
 }
 
 // ── Internal: tab switching ──────────────────────────────────────────

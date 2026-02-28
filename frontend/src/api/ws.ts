@@ -5,7 +5,9 @@ export class WSClient {
   private handlers: WSEventHandler[] = [];
   private reconnectTimer: number | null = null;
 
-  connect(url: string = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/stream`): void {
+  connect(url: string = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL.replace(/^http/, "ws")}/stream`
+    : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/stream`): void {
     if (this.ws) return;
 
     this.ws = new WebSocket(url);

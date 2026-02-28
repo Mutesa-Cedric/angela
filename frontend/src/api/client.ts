@@ -1,6 +1,6 @@
 import type { AutopilotTarget, EntityDetail, Neighborhood, Snapshot } from "../types";
 
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_URL || "/api";
 
 function extractErrorMessage(body: unknown, fallback: string): string {
   if (!body || typeof body !== "object") return fallback;

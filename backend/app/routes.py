@@ -17,7 +17,7 @@ from .ai.prompts_sar import build_sar_payload
 from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
-from .config import ANGELA_AI_PROVIDER, DATA_PATH
+from .config import DATA_PATH
 from .counterfactual import compute_counterfactual
 from .nlq import parse_query, execute_intent
 from .investigation import generate_investigation_targets
@@ -62,21 +62,6 @@ async def get_status() -> dict:
         "n_entities": len(store.entities),
         "n_transactions": len(store.transactions),
         "n_buckets": store.n_buckets,
-        "ai_provider": ANGELA_AI_PROVIDER,
-    }
-
-
-@router.get("/agent/engine")
-async def agent_engine_info() -> dict:
-    """Report which investigation engine is active and its configuration."""
-    is_agentcore = ANGELA_AI_PROVIDER == "bedrock_agentcore"
-    return {
-        "engine": ANGELA_AI_PROVIDER,
-        "note": (
-            "Bedrock AgentCore (in-process Strands Agent) is active."
-            if is_agentcore
-            else "Local multi-agent supervisor is active. Set ANGELA_AI_PROVIDER=bedrock_agentcore to switch."
-        ),
     }
 
 
@@ -780,48 +765,6 @@ async def agent_investigate(req: AgentInvestigateRequest) -> dict:
         )
 
     normalized_query = _normalize_query(req.query)
-
-    # --- Bedrock AgentCore path (in-process Strands Agent) ---
-    if ANGELA_AI_PROVIDER == "bedrock_agentcore":
-        from .agents.strands_agent import invoke as strands_invoke
-
-        try:
-            result = await strands_invoke(
-                query=normalized_query,
-                bucket=req.bucket,
-                profile=req.profile,
-            )
-            input_memory.record_input(
-                kind="agent.investigate",
-                payload={
-                    "query": normalized_query,
-                    "bucket": req.bucket,
-                    "include_sar": req.include_sar,
-                    "max_targets": req.max_targets,
-                    "profile": req.profile,
-                },
-                bucket=req.bucket,
-                cache_hit=False,
-                meta={"run_id": result.get("run_id"), "engine": "bedrock_agentcore"},
-            )
-            return result
-        except Exception as e:
-            input_memory.record_input(
-                kind="agent.investigate",
-                payload={
-                    "query": normalized_query,
-                    "bucket": req.bucket,
-                    "include_sar": req.include_sar,
-                    "max_targets": req.max_targets,
-                    "profile": req.profile,
-                },
-                bucket=req.bucket,
-                cache_hit=False,
-                meta={"error": str(e), "engine": "bedrock_agentcore"},
-            )
-            raise HTTPException(status_code=500, detail=f"AgentCore investigation failed: {e}")
-
-    # --- Local supervisor path (default) ---
     cache_payload = {
         "dataset": _dataset_stamp(),
         "query": normalized_query,

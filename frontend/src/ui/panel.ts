@@ -1,11 +1,14 @@
 import type { EntityDetail, EntityEvidence, Neighborhood } from "../types";
 import { riskColorCSS } from "../graph/NodeLayer";
+import * as sarPanel from "./sarPanel";
 
 const panel = document.getElementById("entity-panel") as HTMLDivElement;
 const panelContent = document.getElementById("panel-content") as HTMLDivElement;
 const panelClose = document.getElementById("panel-close") as HTMLButtonElement;
 
 let onCloseCallback: (() => void) | null = null;
+let currentEntity: EntityDetail | null = null;
+let currentBucket: number = 0;
 
 panelClose.addEventListener("click", () => {
   hide();
@@ -16,8 +19,13 @@ export function onClose(cb: () => void): void {
   onCloseCallback = cb;
 }
 
+export function setBucket(t: number): void {
+  currentBucket = t;
+}
+
 export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
   panel.classList.add("open");
+  currentEntity = entity;
 
   const riskPct = (entity.risk_score * 100).toFixed(0);
   const riskCSS = riskColorCSS(entity.risk_score);
@@ -73,7 +81,14 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
       <h3>AI Analysis</h3>
       <div id="ai-summary" class="ai-summary muted">Loading AI summary...</div>
     </div>
+    <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
   `;
+
+  document.getElementById("panel-sar-btn")!.addEventListener("click", () => {
+    if (currentEntity) {
+      sarPanel.generate(currentEntity.id, currentBucket);
+    }
+  });
 }
 
 /** Horizontal stacked bar showing detector weight contributions. */

@@ -57,3 +57,21 @@ export async function loadSample(): Promise<{ status: string; n_entities: number
 export function getAutopilotTargets(t: number): Promise<{ bucket: number; targets: AutopilotTarget[] }> {
   return fetchJSON(`${BASE}/autopilot/targets?t=${t}`);
 }
+
+export interface SARResponse {
+  entity_id: string;
+  bucket: number;
+  narrative: string;
+  payload: Record<string, unknown>;
+}
+
+export async function generateSAR(id: string, t: number): Promise<SARResponse> {
+  const res = await fetch(`${BASE}/ai/sar/entity/${encodeURIComponent(id)}?t=${t}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `SAR generation failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}

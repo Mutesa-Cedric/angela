@@ -7,6 +7,7 @@ from functools import lru_cache
 import openai
 
 from .prompts import SYSTEM_PROMPT, build_entity_prompt, build_cluster_prompt
+from .prompts_sar import SAR_SYSTEM_PROMPT, build_sar_prompt
 
 log = logging.getLogger(__name__)
 
@@ -32,15 +33,15 @@ def _get_client() -> openai.OpenAI:
     return _client
 
 
-def _call_llm(user_prompt: str) -> str:
+def _call_llm(user_prompt: str, system_prompt: str = SYSTEM_PROMPT, max_tokens: int = MAX_TOKENS) -> str:
     """Call the LLM and return the text response."""
     client = _get_client()
     try:
         response = client.chat.completions.create(
             model=MODEL,
-            max_tokens=MAX_TOKENS,
+            max_tokens=max_tokens,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         )
@@ -82,3 +83,14 @@ def generate_cluster_summary(
 
     prompt = build_cluster_prompt(cluster_id, entity_ids, risk_score, size, bucket)
     return _call_llm(prompt)
+
+
+@lru_cache(maxsize=128)
+def generate_sar_narrative(
+    entity_id: str,
+    payload_key: str,  # JSON string for cache key
+) -> str:
+    import json
+    payload = json.loads(payload_key)
+    prompt = build_sar_prompt(payload)
+    return _call_llm(prompt, system_prompt=SAR_SYSTEM_PROMPT, max_tokens=600)

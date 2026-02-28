@@ -60,6 +60,7 @@ async function loadBucket(t: number): Promise<void> {
     nodeLayer.update(currentSnapshot.nodes);
     edgeLayer.clear();
     assetLayer.clear();
+    panel.setBucket(t);
 
     stats.updateCounts(currentSnapshot.nodes.length, currentSnapshot.edges.length);
 

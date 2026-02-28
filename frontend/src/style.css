@@ -89,6 +89,186 @@ body {
   right: 0;
 }
 
+/* SAR Panel */
+#sar-panel {
+  position: fixed;
+  top: 0;
+  left: -480px;
+  width: 460px;
+  height: 100%;
+  background: rgba(10, 10, 20, 0.94);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(34, 170, 136, 0.3);
+  padding: 20px;
+  overflow-y: auto;
+  transition: left 0.3s ease;
+  z-index: 20;
+}
+
+#sar-panel.open {
+  left: 0;
+}
+
+#sar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+#sar-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #22aa88;
+}
+
+#sar-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+#sar-close:hover {
+  color: #fff;
+}
+
+.sar-header-info {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(34, 170, 136, 0.2);
+}
+
+.sar-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.sar-label {
+  font-size: 10px;
+  color: #667;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.sar-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e8f0;
+  font-family: monospace;
+}
+
+.sar-risk {
+  color: #ff8844;
+}
+
+.sar-narrative {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c8d0e0;
+  white-space: pre-wrap;
+  background: rgba(34, 170, 136, 0.06);
+  border: 1px solid rgba(34, 170, 136, 0.15);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.sar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.sar-btn {
+  flex: 1;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: rgba(34, 170, 136, 0.15);
+  border: 1px solid rgba(34, 170, 136, 0.4);
+  color: #22aa88;
+}
+
+.sar-btn:hover {
+  background: rgba(34, 170, 136, 0.3);
+  border-color: rgba(34, 170, 136, 0.7);
+}
+
+.sar-btn-secondary {
+  background: rgba(68, 136, 255, 0.1);
+  border-color: rgba(68, 136, 255, 0.3);
+  color: #4488ff;
+}
+
+.sar-btn-secondary:hover {
+  background: rgba(68, 136, 255, 0.2);
+  border-color: rgba(68, 136, 255, 0.6);
+}
+
+.sar-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+}
+
+.sar-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(34, 170, 136, 0.2);
+  border-top-color: #22aa88;
+  border-radius: 50%;
+  animation: sar-spin 0.8s linear infinite;
+}
+
+@keyframes sar-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sar-loading-text {
+  font-size: 13px;
+  color: #667;
+  letter-spacing: 0.5px;
+}
+
+.sar-error {
+  color: #ff5544;
+  font-size: 13px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* Generate SAR button in entity panel */
+.panel-sar-btn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: rgba(34, 170, 136, 0.12);
+  border: 1px solid rgba(34, 170, 136, 0.4);
+  color: #22aa88;
+}
+
+.panel-sar-btn:hover {
+  background: rgba(34, 170, 136, 0.25);
+  border-color: rgba(34, 170, 136, 0.7);
+}
+
 #panel-header {
   display: flex;
   justify-content: space-between;

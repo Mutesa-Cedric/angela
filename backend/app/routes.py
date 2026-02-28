@@ -6,7 +6,8 @@ from enum import Enum
 from fastapi import APIRouter, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
-from .ai.service import generate_entity_summary
+from .ai.service import generate_entity_summary, generate_sar_narrative
+from .ai.prompts_sar import build_sar_payload
 from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
@@ -476,3 +477,64 @@ async def get_autopilot_targets(
         )
     targets = generate_investigation_targets(t)
     return {"bucket": t, "targets": targets}
+
+
+# --- SAR Narrative ---
+
+@router.post("/ai/sar/entity/{entity_id}")
+async def generate_sar(
+    entity_id: str,
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+
+    entity = store.get_entity(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Entity '{entity_id}' not found")
+
+    risk = store.get_entity_risk(t, entity_id)
+    activity = store.get_entity_activity(t, entity_id)
+
+    # Get connected entities for context
+    bucket_tx = store.get_bucket_transactions(t)
+    connected_ids: set[str] = set()
+    for tx in bucket_tx:
+        if tx["from_id"] == entity_id and tx["to_id"] != entity_id:
+            connected_ids.add(tx["to_id"])
+        elif tx["to_id"] == entity_id and tx["from_id"] != entity_id:
+            connected_ids.add(tx["from_id"])
+
+    connected_entities = []
+    for cid in sorted(connected_ids)[:10]:
+        cr = store.get_entity_risk(t, cid)
+        connected_entities.append({"id": cid, "risk_score": cr["risk_score"]})
+
+    payload = build_sar_payload(
+        entity_id=entity_id,
+        entity_type=entity.get("type", "account"),
+        bank=entity.get("bank", "Unknown"),
+        jurisdiction_bucket=entity["jurisdiction_bucket"],
+        risk_score=risk["risk_score"],
+        reasons=risk["reasons"],
+        evidence=risk["evidence"],
+        activity=activity,
+        connected_entities=connected_entities,
+        bucket=t,
+        bucket_size_seconds=store.metadata.get("bucket_size_seconds", 86400),
+    )
+
+    narrative = generate_sar_narrative(
+        entity_id=entity_id,
+        payload_key=json.dumps(payload, sort_keys=True, default=str),
+    )
+
+    return {
+        "entity_id": entity_id,
+        "bucket": t,
+        "narrative": narrative,
+        "payload": payload,
+    }

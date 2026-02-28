@@ -790,7 +790,6 @@ function renderAgentHistory(): void {
       if (!run) return;
       nlqInput.value = run.query;
       agentProfile.value = run.profile || "balanced";
-      setAgentStatus(`Loaded run context: ${(run.status || "unknown").toUpperCase()} (${run.run_id.slice(0, 8)})`, "info");
     });
   }
 }
@@ -917,13 +916,10 @@ async function runAgentFlow(): Promise<void> {
 
     activeAgentRunId = result.run_id;
     agentPanel.setRunId(result.run_id);
-    agentPanel.setResult(result);
+    // Ensure profile has a fallback value for display
+    const resultWithProfile = { ...result, profile: result.profile || "balanced" };
+    agentPanel.setResult(resultWithProfile);
 
-    const reportText = result.reporting?.narrative ?? "";
-    const sarSuffix = result.reporting?.sar ? "\n\n**SAR:** Draft generated for top entity." : "";
-    setAgentSummaryMarkdown(`${reportText}${sarSuffix}`);
-    agentMetrics.textContent = `${(result.profile || "balanced").toUpperCase()} profile • ${result.research.total_targets_found} candidates • ${result.analysis.high_risk_count} high-risk selected • avg risk ${Math.round(result.analysis.average_risk * 100)}%`;
-    renderAgentTopEntities(result);
     agentMiniState.textContent = "Completed";
 
     // NLQ bar updates

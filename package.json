@@ -1,0 +1,6 @@
+{
+	"devDependencies": {
+		"puppeteer": "^24.37.5",
+		"tsx": "^4.21.0"
+	}
+}

@@ -86,7 +86,13 @@ function linkifyEntityIdsInElement(root: HTMLElement): void {
       continue;
     }
     const tag = parent.tagName;
-    if (tag === "A" || tag === "CODE" || tag === "PRE" || tag === "SCRIPT" || tag === "STYLE") {
+    if (tag === "A" || tag === "PRE" || tag === "SCRIPT" || tag === "STYLE") {
+      node = walker.nextNode();
+      continue;
+    }
+    // Inline code snippets often contain entity IDs wrapped in backticks.
+    // Keep preformatted code blocks untouched to avoid noisy linkification.
+    if (tag === "CODE" && parent.closest("pre")) {
       node = walker.nextNode();
       continue;
     }

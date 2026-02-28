@@ -922,7 +922,7 @@ function renderAgentHistory(): void {
     <div class="agent-history-title">Recent Runs</div>
     ${agentRunSummaries.slice(0, 4).map((run) => `
       <div class="agent-history-row status-${run.status}" data-run-id="${run.run_id}">
-        <span class="agent-history-state">${run.status.toUpperCase()} ${Math.round(run.progress)}%</span>
+        <span class="agent-history-state">${(run.status || "unknown").toUpperCase()} ${Math.round(run.progress ?? 0)}%</span>
         <span class="agent-history-query" title="${run.query}">${run.query.slice(0, 36)}${run.query.length > 36 ? "..." : ""}</span>
       </div>
     `).join("")}
@@ -934,8 +934,8 @@ function renderAgentHistory(): void {
       const run = agentRunSummaries.find((r) => r.run_id === runId);
       if (!run) return;
       nlqInput.value = run.query;
-      agentProfile.value = run.profile;
-      setAgentStatus(`Loaded run context: ${run.status.toUpperCase()} (${run.run_id.slice(0, 8)})`, "info");
+      agentProfile.value = run.profile || "balanced";
+      setAgentStatus(`Loaded run context: ${(run.status || "unknown").toUpperCase()} (${run.run_id.slice(0, 8)})`, "info");
     });
   }
 }
@@ -1085,7 +1085,7 @@ async function runAgentFlow(): Promise<void> {
     const reportText = result.reporting?.narrative ?? "";
     const sarSuffix = result.reporting?.sar ? "\n\n**SAR:** Draft generated for top entity." : "";
     setAgentSummaryMarkdown(`${reportText}${sarSuffix}`);
-    agentMetrics.textContent = `${result.profile.toUpperCase()} profile • ${result.research.total_targets_found} candidates • ${result.analysis.high_risk_count} high-risk selected • avg risk ${Math.round(result.analysis.average_risk * 100)}%`;
+    agentMetrics.textContent = `${(result.profile || "balanced").toUpperCase()} profile • ${result.research.total_targets_found} candidates • ${result.analysis.high_risk_count} high-risk selected • avg risk ${Math.round(result.analysis.average_risk * 100)}%`;
     renderAgentTopEntities(result);
 
     nlqInterpretation.textContent = result.interpretation || result.intent;

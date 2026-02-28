@@ -59,3 +59,28 @@ app.include_router(cases_router)
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+# --- AgentCore Runtime contract endpoints ---
+# These allow the same container to be deployed to Bedrock AgentCore Runtime.
+
+@app.get("/ping")
+async def ping() -> dict:
+    return {"status": "healthy"}
+
+
+@app.post("/invocations")
+async def invocations(body: dict) -> dict:
+    """AgentCore Runtime invocation endpoint.
+
+    Expects: {"prompt": "...", "bucket": 0}
+    """
+    from .agents.strands_agent import invoke as strands_invoke
+
+    prompt = body.get("prompt", "")
+    bucket = body.get("bucket", 0)
+    if not prompt:
+        return {"error": "No prompt provided"}
+
+    result = await strands_invoke(query=prompt, bucket=bucket)
+    return {"output": result}

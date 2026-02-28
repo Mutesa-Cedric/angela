@@ -1,5 +1,9 @@
 """Prompt templates for AI copilot. Grounded — no speculation allowed."""
 
+from __future__ import annotations
+
+from typing import Optional
+
 SYSTEM_PROMPT = (
     "You are an AML compliance investigation assistant for the ANGELA platform. "
     "You analyze structured risk signals and produce clear, concise summaries "
@@ -17,7 +21,7 @@ def build_entity_prompt(
     risk_score: float,
     reasons: list[dict],
     evidence: dict,
-    activity: dict | None,
+    activity: Optional[dict],
     bucket: int,
 ) -> str:
     lines = [

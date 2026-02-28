@@ -1,5 +1,9 @@
 """FinCEN-style SAR narrative prompt templates."""
 
+from __future__ import annotations
+
+from typing import Optional
+
 SAR_SYSTEM_PROMPT = (
     "You are a Suspicious Activity Report (SAR) narrative writer for the ANGELA AML platform. "
     "You generate formal, FinCEN-style SAR narratives suitable for regulatory filing. Rules:\n"
@@ -22,7 +26,7 @@ def build_sar_payload(
     risk_score: float,
     reasons: list[dict],
     evidence: dict,
-    activity: dict | None,
+    activity: Optional[dict],
     connected_entities: list[dict],
     bucket: int,
     bucket_size_seconds: int,

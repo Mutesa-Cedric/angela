@@ -5,12 +5,15 @@ Supports two CSV formats:
 2. Simple header-based format (Timestamp, From Bank, From Account, To Bank, To Account, Amount, ...)
 """
 
+from __future__ import annotations
+
 import csv
 import hashlib
 import io
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ REQUIRED_HEADERS = {"timestamp", "from bank", "from account", "to bank", "to acc
 IBM_MIN_COLS = 11
 
 
-def parse_timestamp(ts_str: str) -> int | None:
+def parse_timestamp(ts_str: str) -> Optional[int]:
     ts_str = ts_str.strip()
     for fmt in ("%Y/%m/%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
         try:
@@ -76,7 +79,7 @@ def preview_csv(file_bytes: bytes, max_rows: int = 5) -> dict:
         rows.append([c.strip() for c in cols])
 
     # Smart-match: for each target field, find best matching column
-    suggested: dict[str, str | None] = {}
+    suggested: dict[str, Optional[str]] = {}
     for field, patterns in SMART_MATCH.items():
         match = None
         for col in columns:
@@ -108,7 +111,7 @@ def _detect_format(header: list[str]) -> str:
     )
 
 
-def _parse_ibm_row(cols: list[str], row_idx: int) -> dict | None:
+def _parse_ibm_row(cols: list[str], row_idx: int) -> Optional[dict]:
     """Parse a row in IBM positional format."""
     if len(cols) < IBM_MIN_COLS:
         return None
@@ -152,7 +155,7 @@ def _parse_ibm_row(cols: list[str], row_idx: int) -> dict | None:
     }
 
 
-def _parse_simple_row(row: dict, row_idx: int) -> dict | None:
+def _parse_simple_row(row: dict, row_idx: int) -> Optional[dict]:
     """Parse a row using header-based column names."""
     # Normalize keys to lowercase
     r = {k.strip().lower(): v.strip() for k, v in row.items()}

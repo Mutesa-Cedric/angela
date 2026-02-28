@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -48,7 +52,7 @@ class EntityDetailOut(BaseModel):
     risk_score: float
     reasons: list[ReasonOut]
     evidence: dict
-    activity: dict | None = None
+    activity: Optional[dict] = None
 
 
 class NeighborEdge(BaseModel):

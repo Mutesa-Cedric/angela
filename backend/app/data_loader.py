@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
 from collections import defaultdict
+from typing import Optional
 
 from .risk.scoring import compute_risk_for_bucket
 
@@ -100,7 +103,7 @@ class DataStore:
             "evidence": {},
         })
 
-    def get_entity(self, entity_id: str) -> dict | None:
+    def get_entity(self, entity_id: str) -> Optional[dict]:
         return self.entities_by_id.get(entity_id)
 
     def get_bucket_transactions(self, bucket: int) -> list[dict]:
@@ -112,7 +115,7 @@ class DataStore:
         activity = self.entity_activity.get(str(bucket), {})
         return list(activity.keys())
 
-    def get_entity_activity(self, bucket: int, entity_id: str) -> dict | None:
+    def get_entity_activity(self, bucket: int, entity_id: str) -> Optional[dict]:
         return self.entity_activity.get(str(bucket), {}).get(entity_id)
 
 

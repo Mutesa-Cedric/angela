@@ -3,8 +3,11 @@
 Flow: CLUSTER_DETECTED → generate GLB → save → emit ASSET_READY
 """
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
+from typing import Optional
 
 from .generator import make_beacon, make_cluster_blob
 
@@ -15,7 +18,7 @@ async def handle_cluster_asset(
     cluster: dict,
     bucket: int,
     broadcast_fn,
-) -> dict | None:
+) -> Optional[dict]:
     """Generate a cluster blob GLB and broadcast ASSET_READY.
 
     Returns asset metadata or None on failure.
@@ -50,7 +53,7 @@ async def handle_beacon_asset(
     risk_score: float,
     bucket: int,
     broadcast_fn,
-) -> dict | None:
+) -> Optional[dict]:
     """Generate a beacon GLB and broadcast ASSET_READY."""
     try:
         glb_path = make_beacon(entity_id=entity_id, risk_score=risk_score)

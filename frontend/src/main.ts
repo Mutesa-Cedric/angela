@@ -5,7 +5,8 @@ import { EdgeLayer } from "./graph/EdgeLayer";
 import { getSnapshot, getEntity, getNeighbors } from "./api/client";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
-import type { Snapshot } from "./types";
+import { wsClient } from "./api/ws";
+import type { Snapshot, SnapshotNode } from "./types";
 
 const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
 if (!canvas) throw new Error("Canvas element #scene-canvas not found");
@@ -115,6 +116,33 @@ panel.onClose(() => selectEntity(null));
 
 slider.onChange((t) => loadBucket(t));
 
+// --- WebSocket live updates ---
+
+wsClient.onEvent((event, data) => {
+  if (event === "RISK_UPDATED" && currentSnapshot) {
+    const bucketData = data as { bucket: number; entity_risks: Record<string, number> };
+    if (bucketData.bucket !== currentSnapshot.meta.t) return;
+
+    // Update risk scores in current snapshot
+    const riskMap = bucketData.entity_risks;
+    const updatedNodes: SnapshotNode[] = currentSnapshot.nodes.map((node) => ({
+      ...node,
+      risk_score: riskMap[node.id] ?? node.risk_score,
+    }));
+    currentSnapshot = { ...currentSnapshot, nodes: updatedNodes };
+    nodeLayer.update(updatedNodes);
+
+    // Re-select to update edges if needed
+    if (selectedId) {
+      nodeLayer.select(selectedId);
+    }
+  }
+
+  if (event === "CLUSTER_DETECTED") {
+    console.log("Cluster detected:", data);
+  }
+});
+
 // --- Init ---
 
 async function init(): Promise<void> {
@@ -122,6 +150,9 @@ async function init(): Promise<void> {
   slider.init(snapshot.meta.n_buckets, 0);
   currentSnapshot = snapshot;
   nodeLayer.update(snapshot.nodes);
+
+  // Connect WebSocket
+  wsClient.connect();
 }
 
 init().catch(console.error);

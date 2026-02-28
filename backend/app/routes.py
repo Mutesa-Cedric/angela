@@ -1,7 +1,10 @@
+import random
 from collections import deque
+from enum import Enum
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from .clusters import detect_clusters
 from .data_loader import store
 from .models import (
     EntityDetailOut,
@@ -10,6 +13,8 @@ from .models import (
     SnapshotNode,
     SnapshotOut,
 )
+from .risk.scoring import compute_risk_for_bucket
+from .ws import manager
 
 router = APIRouter()
 
@@ -163,3 +168,152 @@ async def get_neighbors(
             )
 
     return NeighborhoodOut(center_id=id, k=k, nodes=nodes, edges=edges)
+
+
+# --- WebSocket ---
+
+@router.websocket("/stream")
+async def websocket_stream(ws: WebSocket) -> None:
+    await manager.connect(ws)
+    try:
+        while True:
+            await ws.receive_text()  # keep alive, ignore client messages
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
+
+
+# --- Anomaly Injection ---
+
+class InjectPattern(str, Enum):
+    velocity = "velocity"
+    structuring = "structuring"
+    cycle = "cycle"
+
+
+@router.post("/inject")
+async def inject_anomaly(
+    pattern: InjectPattern = Query(..., description="Anomaly pattern to inject"),
+    t: int = Query(..., description="Target bucket"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+
+    bucket_tx = store.get_bucket_transactions(t)
+    if not bucket_tx:
+        raise HTTPException(status_code=400, detail=f"No transactions in bucket {t}")
+
+    # Pick a random entity from this bucket
+    rng = random.Random(42 + t)
+    entity_ids = list({tx["from_id"] for tx in bucket_tx if tx["from_id"] != tx["to_id"]})
+    if not entity_ids:
+        raise HTTPException(status_code=400, detail="No valid entities in bucket")
+    target_id = rng.choice(entity_ids)
+
+    # Get a few counterparties
+    counterparties = list({
+        tx["to_id"] for tx in bucket_tx
+        if tx["from_id"] == target_id and tx["to_id"] != target_id
+    })[:5]
+    if not counterparties:
+        counterparties = [rng.choice(entity_ids)]
+
+    # Inject synthetic transactions
+    base_ts = min(tx["timestamp"] for tx in bucket_tx)
+    injected_tx: list[dict] = []
+
+    if pattern == InjectPattern.velocity:
+        # Inject 50 rapid-fire transactions
+        for i in range(50):
+            injected_tx.append({
+                "tx_id": f"injected_vel_{t}_{i}",
+                "from_id": target_id,
+                "to_id": counterparties[i % len(counterparties)],
+                "amount": round(rng.uniform(100, 5000), 2),
+                "currency": "USD",
+                "timestamp": base_ts + i * 60,  # one per minute
+                "payment_format": "Wire",
+                "is_laundering": 1,
+                "bucket_index": t,
+            })
+
+    elif pattern == InjectPattern.structuring:
+        # Inject 10 transactions just below $10K
+        for i in range(10):
+            injected_tx.append({
+                "tx_id": f"injected_struct_{t}_{i}",
+                "from_id": target_id,
+                "to_id": counterparties[i % len(counterparties)],
+                "amount": round(rng.uniform(9000, 9999), 2),
+                "currency": "USD",
+                "timestamp": base_ts + i * 300,
+                "payment_format": "Wire",
+                "is_laundering": 1,
+                "bucket_index": t,
+            })
+
+    elif pattern == InjectPattern.cycle:
+        # Inject a 3-node cycle: target -> A -> B -> target
+        if len(counterparties) >= 2:
+            a, b = counterparties[0], counterparties[1]
+        else:
+            a = counterparties[0]
+            b = target_id  # self-referencing fallback
+        for i, (f, to) in enumerate([(target_id, a), (a, b), (b, target_id)]):
+            injected_tx.append({
+                "tx_id": f"injected_cycle_{t}_{i}",
+                "from_id": f,
+                "to_id": to,
+                "amount": round(rng.uniform(5000, 50000), 2),
+                "currency": "USD",
+                "timestamp": base_ts + i * 600,
+                "payment_format": "Wire",
+                "is_laundering": 1,
+                "bucket_index": t,
+            })
+
+    # Add injected transactions to the bucket
+    for tx in injected_tx:
+        store.transactions.append(tx)
+        bucket_key = str(t)
+        idx = len(store.transactions) - 1
+        store.bucket_index.setdefault(bucket_key, []).append(idx)
+
+    # Recompute risk for this bucket
+    all_bucket_tx = store.get_bucket_transactions(t)
+    bucket_size = store.metadata.get("bucket_size_seconds", 86400)
+    store.risk_by_bucket[t] = compute_risk_for_bucket(all_bucket_tx, bucket_size)
+
+    # Detect clusters
+    clusters = detect_clusters(store.risk_by_bucket[t], all_bucket_tx)
+
+    # Broadcast events
+    changed_risks = {
+        eid: data["risk_score"]
+        for eid, data in store.risk_by_bucket[t].items()
+        if data["risk_score"] > 0
+    }
+
+    await manager.broadcast("RISK_UPDATED", {
+        "bucket": t,
+        "entity_risks": changed_risks,
+        "injected_entity": target_id,
+        "pattern": pattern.value,
+    })
+
+    for cluster in clusters:
+        await manager.broadcast("CLUSTER_DETECTED", {
+            "bucket": t,
+            **cluster,
+        })
+
+    return {
+        "status": "injected",
+        "pattern": pattern.value,
+        "bucket": t,
+        "target_entity": target_id,
+        "injected_count": len(injected_tx),
+        "clusters_found": len(clusters),
+    }

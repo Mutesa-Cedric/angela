@@ -14,9 +14,9 @@
         <div class="upload-title">ANGELA</div>
         <div class="upload-subtitle">Anomaly Network Graph for Explainable Laundering Analysis</div>
         <div id="upload-dropzone">
-          <div class="dropzone-icon">CSV</div>
-          <p>Drag &amp; drop transaction CSV<br/>or click to browse</p>
-          <input type="file" id="upload-file" accept=".csv" hidden />
+          <div class="dropzone-icon">CSV / JSON</div>
+          <p>Drag &amp; drop transaction file<br/>or click to browse</p>
+          <input type="file" id="upload-file" accept=".csv,.json" hidden />
         </div>
         <div id="upload-error"></div>
         <div id="upload-spinner">Processing...</div>
@@ -56,16 +56,16 @@
     <div id="legend">
       <div class="legend-title">ANGELA</div>
       <div class="legend-row">
-        <span class="legend-swatch" style="background:#4488ff"></span>
-        <span>Standard KYC</span>
+        <span class="legend-gradient"></span>
+        <span>Risk: Low → High</span>
       </div>
       <div class="legend-row">
-        <span class="legend-swatch" style="background:#ff8844"></span>
-        <span>Enhanced KYC</span>
-      </div>
-      <div class="legend-row">
-        <span class="legend-swatch" style="background:#ffff00"></span>
+        <span class="legend-swatch" style="background:#ffffff; border: 1px solid #444;"></span>
         <span>Selected</span>
+      </div>
+      <div class="legend-row">
+        <span class="legend-icon">◉</span>
+        <span>Size = Risk Level</span>
       </div>
       <div class="legend-divider"></div>
       <div class="legend-row">
@@ -82,16 +82,12 @@
       </div>
       <div class="legend-divider"></div>
       <div class="legend-row">
-        <span class="legend-swatch edge-low"></span>
-        <span>Low risk edge</span>
+        <span class="legend-gradient"></span>
+        <span>Edge Risk + Flow</span>
       </div>
       <div class="legend-row">
-        <span class="legend-swatch edge-mid"></span>
-        <span>Medium risk edge</span>
-      </div>
-      <div class="legend-row">
-        <span class="legend-swatch edge-high"></span>
-        <span>High risk edge</span>
+        <span class="legend-icon">━</span>
+        <span>Width = Amount</span>
       </div>
     </div>
 

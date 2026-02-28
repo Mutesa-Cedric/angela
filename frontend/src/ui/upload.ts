@@ -1,4 +1,4 @@
-import { uploadCSV, loadSample } from "../api/client";
+import { uploadFile, loadSample } from "../api/client";
 
 const modal = document.getElementById("upload-modal") as HTMLDivElement;
 const dropzone = document.getElementById("upload-dropzone") as HTMLDivElement;
@@ -47,8 +47,9 @@ sampleBtn.addEventListener("click", () => {
 });
 
 async function handleFile(file: File): Promise<void> {
-  if (!file.name.toLowerCase().endsWith(".csv")) {
-    showError("Please upload a .csv file");
+  const ext = file.name.toLowerCase();
+  if (!ext.endsWith(".csv") && !ext.endsWith(".json")) {
+    showError("Please upload a .csv or .json file");
     return;
   }
 
@@ -56,7 +57,7 @@ async function handleFile(file: File): Promise<void> {
   clearError();
 
   try {
-    await uploadCSV(file);
+    await uploadFile(file);
     hide();
     onLoadedCallback?.();
   } catch (err) {

@@ -41,18 +41,27 @@ async def get_status() -> dict:
 
 
 @router.post("/upload")
-async def upload_csv(file: UploadFile) -> dict:
-    if not file.filename or not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="File must be a .csv")
+async def upload_file(file: UploadFile) -> dict:
+    fname = (file.filename or "").lower()
+    if not fname.endswith(".csv") and not fname.endswith(".json"):
+        raise HTTPException(status_code=400, detail="File must be .csv or .json")
 
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
 
-    try:
-        snapshot = process_csv(contents, filename=file.filename)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    if fname.endswith(".json"):
+        try:
+            snapshot = json.loads(contents)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+        if not isinstance(snapshot, dict) or "entities" not in snapshot or "transactions" not in snapshot:
+            raise HTTPException(status_code=400, detail="JSON must contain 'entities' and 'transactions' keys")
+    else:
+        try:
+            snapshot = process_csv(contents, filename=file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     store.load_from_dict(snapshot)
 

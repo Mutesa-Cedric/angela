@@ -34,7 +34,7 @@ export function getStatus(): Promise<{ loaded: boolean; n_entities: number; n_tr
   return fetchJSON(`${BASE}/status`);
 }
 
-export async function uploadCSV(file: File): Promise<{ status: string; n_entities: number; n_transactions: number; n_buckets: number }> {
+export async function uploadFile(file: File): Promise<{ status: string; n_entities: number; n_transactions: number; n_buckets: number }> {
   const form = new FormData();
   form.append("file", file);
   const res = await fetch(`${BASE}/upload`, { method: "POST", body: form });

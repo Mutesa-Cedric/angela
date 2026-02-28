@@ -2,14 +2,28 @@ import * as THREE from "three";
 import type { SnapshotNode } from "../types";
 import { computePositions } from "../layout";
 
-const NODE_RADIUS = 0.15;
-const NODE_SEGMENTS = 12;
-const DEFAULT_COLOR = new THREE.Color(0x4488ff);
-const ENHANCED_COLOR = new THREE.Color(0xff8844);
-const SELECTED_COLOR = new THREE.Color(0xffff00);
+const SELECTED_COLOR = new THREE.Color(0xffffff);
 
 const _dummy = new THREE.Object3D();
 const _color = new THREE.Color();
+const _tmpA = new THREE.Color();
+const _tmpB = new THREE.Color();
+
+/** Map risk [0,1] to a continuous color gradient. */
+function riskColor(risk: number): THREE.Color {
+  if (risk < 0.3) {
+    return _tmpA.set(0x1a3366).lerp(_tmpB.set(0x22aa88), risk / 0.3);
+  } else if (risk < 0.6) {
+    return _tmpA.set(0x22aa88).lerp(_tmpB.set(0xffaa00), (risk - 0.3) / 0.3);
+  } else {
+    return _tmpA.set(0xffaa00).lerp(_tmpB.set(0xff2222), (risk - 0.6) / 0.4);
+  }
+}
+
+/** Map risk [0,1] to CSS color string. */
+export function riskColorCSS(risk: number): string {
+  return `#${riskColor(risk).getHexString()}`;
+}
 
 export class NodeLayer {
   mesh: THREE.InstancedMesh;
@@ -21,11 +35,14 @@ export class NodeLayer {
 
   constructor(maxCount: number = 5000) {
     this.maxCount = maxCount;
-    const geometry = new THREE.SphereGeometry(NODE_RADIUS, NODE_SEGMENTS, NODE_SEGMENTS);
+    // Unit sphere — scaled per-instance by risk
+    const geometry = new THREE.SphereGeometry(1, 16, 16);
     const material = new THREE.MeshStandardMaterial({
       vertexColors: false,
-      roughness: 0.6,
-      metalness: 0.2,
+      roughness: 0.35,
+      metalness: 0.1,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.25,
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, maxCount);
@@ -55,12 +72,14 @@ export class NodeLayer {
       this.idToIndex.set(node.id, i);
       this.indexToId.set(i, node.id);
 
-      // Position
+      // Position + risk-based scale
+      const radius = 0.08 + node.risk_score * 0.37;
       _dummy.position.set(
         positions[i * 3],
         positions[i * 3 + 1],
         positions[i * 3 + 2],
       );
+      _dummy.scale.setScalar(radius);
       _dummy.updateMatrix();
       this.mesh.setMatrixAt(i, _dummy.matrix);
 
@@ -76,10 +95,8 @@ export class NodeLayer {
   private setInstanceColor(i: number, node: SnapshotNode): void {
     if (i === this.selectedIndex) {
       _color.copy(SELECTED_COLOR);
-    } else if (node.kyc_level === "enhanced") {
-      _color.copy(ENHANCED_COLOR);
     } else {
-      _color.copy(DEFAULT_COLOR);
+      _color.copy(riskColor(node.risk_score));
     }
     this.mesh.setColorAt(i, _color);
   }

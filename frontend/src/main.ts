@@ -1,6 +1,6 @@
 import "./style.css";
 import { initScene } from "./scene";
-import { NodeLayer } from "./graph/NodeLayer";
+import { NodeLayer, riskColorCSS } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
 import { AssetLayer } from "./graph/AssetLayer";
 import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus } from "./api/client";
@@ -236,9 +236,53 @@ function getAssetEntityIds(assetId: string): string[] {
   return [];
 }
 
+// --- Hover tooltip ---
+
+const tooltip = document.createElement("div");
+tooltip.id = "node-tooltip";
+tooltip.style.display = "none";
+document.body.appendChild(tooltip);
+
+let hoveredId: string | null = null;
+
+canvas.addEventListener("pointermove", (e) => {
+  ctx.pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  ctx.pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  ctx.raycaster.setFromCamera(ctx.pointer, ctx.camera);
+  const hits = ctx.raycaster.intersectObject(nodeLayer.mesh, false);
+
+  if (hits.length > 0 && hits[0].instanceId !== undefined) {
+    const entityId = nodeLayer.getEntityId(hits[0].instanceId);
+    if (entityId && entityId !== hoveredId) {
+      hoveredId = entityId;
+      const node = currentSnapshot?.nodes.find((n) => n.id === entityId);
+      if (node) {
+        tooltip.innerHTML = `
+          <div class="tooltip-id">${entityId}</div>
+          <div class="tooltip-risk" style="color:${riskColorCSS(node.risk_score)}">
+            Risk: ${(node.risk_score * 100).toFixed(0)}%
+          </div>
+        `;
+      }
+    }
+    tooltip.style.display = "block";
+    tooltip.style.left = `${e.clientX + 12}px`;
+    tooltip.style.top = `${e.clientY - 8}px`;
+  } else {
+    hoveredId = null;
+    tooltip.style.display = "none";
+  }
+});
+
 // --- Per-frame updates ---
+let lastFrameTime = performance.now();
 ctx.onFrame(() => {
+  const now = performance.now();
+  const dt = (now - lastFrameTime) / 1000;
+  lastFrameTime = now;
+
   assetLayer.animate();
+  edgeLayer.animate(dt);
   stats.tick();
 });
 

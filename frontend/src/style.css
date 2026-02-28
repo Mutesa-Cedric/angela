@@ -482,3 +482,40 @@ body {
   color: #fff;
   border-color: rgba(68, 136, 255, 0.6);
 }
+
+/* Node hover tooltip */
+#node-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: rgba(10, 10, 25, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(68, 136, 255, 0.4);
+  border-radius: 6px;
+  padding: 8px 12px;
+  z-index: 30;
+  font-size: 12px;
+  max-width: 220px;
+  white-space: nowrap;
+}
+
+.tooltip-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: #88aacc;
+  margin-bottom: 2px;
+}
+
+.tooltip-risk {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* Legend gradient swatch */
+.legend-gradient {
+  display: inline-block;
+  width: 60px;
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1a3366, #22aa88, #ffaa00, #ff2222);
+  flex-shrink: 0;
+}

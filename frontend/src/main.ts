@@ -161,6 +161,19 @@ canvas.addEventListener("pointerdown", (e) => {
 
 panel.onClose(() => selectEntity(null));
 
+// Counterfactual edge highlighting
+panel.onCounterfactual((result) => {
+  if (result.removed_edges.length === 0) {
+    // Clear counterfactual highlights — restore normal edges
+    if (selectedId && currentSnapshot) {
+      loadNeighborEdges(selectedId, currentSnapshot.meta.t, currentK);
+    }
+    return;
+  }
+  // Show removed edges in red
+  edgeLayer.showCounterfactual(result.removed_edges, nodeLayer);
+});
+
 // --- Slider ---
 
 slider.onChange((t) => loadBucket(t));

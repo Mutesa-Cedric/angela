@@ -126,3 +126,23 @@ export async function queryNLQ(query: string, bucket: number): Promise<NLQResult
   }
   return res.json();
 }
+
+export interface CounterfactualResult {
+  entity_id: string;
+  bucket: number;
+  original: { risk_score: number; reasons: { detector: string; detail: string; weight: number }[]; evidence: Record<string, unknown> };
+  counterfactual: { risk_score: number; reasons: { detector: string; detail: string; weight: number }[]; evidence: Record<string, unknown> };
+  removed_edges: { from_id: string; to_id: string; amount: number; reason: string }[];
+  delta: { risk_score: number; tx_count_removed: number };
+}
+
+export async function getCounterfactual(id: string, t: number): Promise<CounterfactualResult> {
+  const res = await fetch(`${BASE}/counterfactual/entity/${encodeURIComponent(id)}?t=${t}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Counterfactual failed: HTTP ${res.status}`);
+  }
+  return res.json();
+}

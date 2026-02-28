@@ -12,6 +12,7 @@ from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
 from .config import DATA_PATH
+from .counterfactual import compute_counterfactual
 from .nlq import parse_query, execute_intent
 from .investigation import generate_investigation_targets
 from .csv_processor import process_csv
@@ -602,3 +603,22 @@ async def nlq_parse(req: NLQParseRequest) -> dict:
         "edges": result["edges"],
         "summary": result["summary"],
     }
+
+
+# --- Counterfactual Explainer ---
+
+@router.post("/counterfactual/entity/{entity_id}")
+async def counterfactual_entity(
+    entity_id: str,
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+    entity = store.get_entity(entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Entity '{entity_id}' not found")
+
+    return compute_counterfactual(entity_id, t)

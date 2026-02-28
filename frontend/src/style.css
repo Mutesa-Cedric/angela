@@ -1461,3 +1461,114 @@ body {
 #nlq-bar.loading #nlq-input {
   border-color: rgba(34, 170, 136, 0.5);
 }
+
+/* ===== Counterfactual ===== */
+.panel-cf-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: rgba(68, 136, 255, 0.1);
+  border: 1px solid rgba(68, 136, 255, 0.35);
+  color: #4488ff;
+}
+
+.panel-cf-btn:hover {
+  background: rgba(68, 136, 255, 0.2);
+  border-color: rgba(68, 136, 255, 0.6);
+}
+
+.panel-cf-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.panel-cf-btn.active {
+  background: rgba(255, 68, 102, 0.15);
+  border-color: rgba(255, 68, 102, 0.5);
+  color: #ff4466;
+}
+
+#cf-result {
+  margin-top: 12px;
+}
+
+#cf-result h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #aaa;
+  margin-bottom: 8px;
+}
+
+.cf-delta-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.cf-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.cf-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.cf-score-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: monospace;
+}
+
+.cf-score-label {
+  font-size: 10px;
+  color: #667;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.cf-arrow {
+  font-size: 18px;
+  color: #556;
+}
+
+.cf-delta-badge {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: monospace;
+  margin-left: auto;
+}
+
+.cf-removed-info {
+  font-size: 11px;
+  color: #889;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+}
+
+.cf-reason-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 68, 102, 0.12);
+  color: #ff6688;
+  margin-left: 4px;
+}
+
+.cf-error {
+  color: #ff5544;
+  font-size: 12px;
+  padding: 8px 0;
+}

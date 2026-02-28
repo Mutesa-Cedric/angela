@@ -113,6 +113,57 @@ export class EdgeLayer {
     }
   }
 
+  /** Show counterfactual removed edges as red, thicker lines. */
+  showCounterfactual(
+    removedEdges: { from_id: string; to_id: string; amount: number }[],
+    nodeLayer: NodeLayer,
+  ): void {
+    this.clear();
+    if (removedEdges.length === 0) return;
+
+    const positions: number[] = [];
+    const colors: number[] = [];
+
+    for (const edge of removedEdges) {
+      const fromPos = nodeLayer.getPosition(edge.from_id);
+      const toPos = nodeLayer.getPosition(edge.to_id);
+      if (!fromPos || !toPos) continue;
+
+      positions.push(fromPos.x, fromPos.y, fromPos.z);
+      positions.push(toPos.x, toPos.y, toPos.z);
+
+      // Red color for suspicious edges
+      colors.push(1.0, 0.25, 0.3, 1.0, 0.25, 0.3);
+    }
+
+    if (positions.length === 0) return;
+
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(positions);
+    geometry.setColors(colors);
+
+    const material = new LineMaterial({
+      linewidth: 0.12,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
+      dashed: true,
+      dashScale: 1,
+      dashSize: 0.5,
+      gapSize: 0.3,
+      dashOffset: 0,
+      worldUnits: true,
+      depthWrite: false,
+    });
+    material.resolution.set(window.innerWidth, window.innerHeight);
+
+    const seg = new LineSegments2(geometry, material);
+    seg.computeLineDistances();
+    this.group.add(seg);
+    this.segments.push(seg);
+    this.materials.push(material);
+  }
+
   clear(): void {
     for (const seg of this.segments) {
       seg.geometry.dispose();

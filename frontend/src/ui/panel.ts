@@ -1,12 +1,15 @@
 import type { EntityDetail, EntityEvidence, Neighborhood } from "../types";
 import { riskColorCSS } from "../graph/NodeLayer";
 import * as sarPanel from "./sarPanel";
+import { getCounterfactual } from "../api/client";
+import type { CounterfactualResult } from "../api/client";
 
 const panel = document.getElementById("entity-panel") as HTMLDivElement;
 const panelContent = document.getElementById("panel-content") as HTMLDivElement;
 const panelClose = document.getElementById("panel-close") as HTMLButtonElement;
 
 let onCloseCallback: (() => void) | null = null;
+let onCounterfactualCallback: ((result: CounterfactualResult) => void) | null = null;
 let currentEntity: EntityDetail | null = null;
 let currentBucket: number = 0;
 
@@ -21,6 +24,10 @@ export function onClose(cb: () => void): void {
 
 export function setBucket(t: number): void {
   currentBucket = t;
+}
+
+export function onCounterfactual(cb: (result: CounterfactualResult) => void): void {
+  onCounterfactualCallback = cb;
 }
 
 export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
@@ -82,6 +89,8 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
       <div id="ai-summary" class="ai-summary muted">Loading AI summary...</div>
     </div>
     <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
+    ${entity.risk_score > 0.1 ? '<button id="panel-cf-btn" class="panel-cf-btn">What If? (Counterfactual)</button>' : ""}
+    <div id="cf-result" style="display:none"></div>
   `;
 
   document.getElementById("panel-sar-btn")!.addEventListener("click", () => {
@@ -89,6 +98,11 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
       sarPanel.generate(currentEntity.id, currentBucket);
     }
   });
+
+  const cfBtn = document.getElementById("panel-cf-btn");
+  if (cfBtn) {
+    cfBtn.addEventListener("click", () => runCounterfactual());
+  }
 }
 
 /** Horizontal stacked bar showing detector weight contributions. */
@@ -248,6 +262,90 @@ export function setAISummary(summary: string): void {
   if (el) {
     el.textContent = summary;
     el.classList.remove("muted");
+  }
+}
+
+// ── Counterfactual ──────────────────────────────────────────────────
+
+async function runCounterfactual(): Promise<void> {
+  if (!currentEntity) return;
+
+  const cfBtn = document.getElementById("panel-cf-btn") as HTMLButtonElement | null;
+  const cfResult = document.getElementById("cf-result");
+  if (!cfResult) return;
+
+  if (cfBtn) {
+    cfBtn.disabled = true;
+    cfBtn.textContent = "Computing...";
+  }
+
+  try {
+    const result = await getCounterfactual(currentEntity.id, currentBucket);
+
+    const origPct = (result.original.risk_score * 100).toFixed(0);
+    const cfPct = (result.counterfactual.risk_score * 100).toFixed(0);
+    const deltaPct = (result.delta.risk_score * 100).toFixed(0);
+    const origColor = riskColorCSS(result.original.risk_score);
+    const cfColor = riskColorCSS(result.counterfactual.risk_score);
+
+    // Group removed edges by reason
+    const byReason: Record<string, number> = {};
+    for (const edge of result.removed_edges) {
+      byReason[edge.reason] = (byReason[edge.reason] || 0) + 1;
+    }
+    const reasonTags = Object.entries(byReason)
+      .map(([r, n]) => `<span class="cf-reason-tag">${n} ${r}</span>`)
+      .join(" ");
+
+    cfResult.innerHTML = `
+      <h3>Counterfactual Analysis</h3>
+      <div class="cf-delta-card">
+        <div class="cf-delta-row">
+          <div class="cf-score">
+            <span class="cf-score-value" style="color:${origColor}">${origPct}%</span>
+            <span class="cf-score-label">actual</span>
+          </div>
+          <span class="cf-arrow">→</span>
+          <div class="cf-score">
+            <span class="cf-score-value" style="color:${cfColor}">${cfPct}%</span>
+            <span class="cf-score-label">if clean</span>
+          </div>
+          <div class="cf-delta-badge" style="color:${Number(deltaPct) <= 0 ? "#22aa88" : "#ff4466"}">
+            ${Number(deltaPct) <= 0 ? "" : "+"}${deltaPct}%
+          </div>
+        </div>
+        <div class="cf-removed-info">
+          ${result.delta.tx_count_removed} suspicious edges removed: ${reasonTags}
+        </div>
+      </div>
+    `;
+    cfResult.style.display = "block";
+
+    if (cfBtn) {
+      cfBtn.textContent = "Show Suspicious Edges";
+      cfBtn.disabled = false;
+      // Replace click handler to toggle edge highlighting
+      const newBtn = cfBtn.cloneNode(true) as HTMLButtonElement;
+      cfBtn.replaceWith(newBtn);
+      let showing = false;
+      newBtn.addEventListener("click", () => {
+        showing = !showing;
+        newBtn.textContent = showing ? "Hide Suspicious Edges" : "Show Suspicious Edges";
+        newBtn.classList.toggle("active", showing);
+        if (showing) {
+          onCounterfactualCallback?.(result);
+        } else {
+          onCounterfactualCallback?.({ ...result, removed_edges: [] });
+        }
+      });
+    }
+  } catch (err) {
+    cfResult.innerHTML = `<div class="cf-error">Counterfactual failed: ${err instanceof Error ? err.message : "Unknown error"}</div>`;
+    cfResult.style.display = "block";
+    if (cfBtn) {
+      cfBtn.textContent = "What If? (Counterfactual)";
+      cfBtn.disabled = false;
+    }
   }
 }
 

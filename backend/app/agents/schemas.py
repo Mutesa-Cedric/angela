@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -17,5 +19,9 @@ class AgentInvestigateRequest(BaseModel):
         ge=1,
         le=15,
         description="Maximum entities to carry through analysis/reporting",
+    )
+    profile: Literal["fast", "balanced", "deep"] = Field(
+        default="balanced",
+        description="Investigation depth/latency profile",
     )
 

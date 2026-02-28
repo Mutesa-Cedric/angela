@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
+from threading import Lock
 from typing import Any, Optional
 
 import openai
@@ -29,6 +30,8 @@ TIMEOUT = float(os.getenv("ANGELA_AI_TIMEOUT", "45.0"))
 
 _openai_client: Optional[openai.OpenAI] = None
 _bedrock_client: Any = None
+_sar_cache_lock = Lock()
+_sar_narrative_cache: dict[str, str] = {}
 
 
 def _get_openai_client() -> openai.OpenAI:
@@ -193,7 +196,30 @@ def generate_sar_narrative(
     entity_id: str,
     payload_key: str,  # JSON string for cache key
 ) -> str:
+    cache_key = f"{entity_id}:{payload_key}"
+    with _sar_cache_lock:
+        cached = _sar_narrative_cache.get(cache_key)
+    if cached:
+        return cached
+
     import json
     payload = json.loads(payload_key)
     prompt = build_sar_prompt(payload)
-    return _call_llm(prompt, system_prompt=SAR_SYSTEM_PROMPT, max_tokens=SAR_MAX_TOKENS)
+    narrative = _call_llm(prompt, system_prompt=SAR_SYSTEM_PROMPT, max_tokens=SAR_MAX_TOKENS)
+
+    # Cache successful narratives to reduce repeated generation latency.
+    if narrative and narrative != "AI summary temporarily unavailable.":
+        with _sar_cache_lock:
+            _sar_narrative_cache[cache_key] = narrative
+    return narrative
+
+
+def clear_ai_caches() -> None:
+    """Clear all in-process AI caches.
+
+    Called when a new dataset is loaded or warmup restarts.
+    """
+    generate_entity_summary.cache_clear()
+    generate_cluster_summary.cache_clear()
+    with _sar_cache_lock:
+        _sar_narrative_cache.clear()

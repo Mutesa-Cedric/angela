@@ -5,8 +5,12 @@ from enum import Enum
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from .ai.service import generate_entity_summary, generate_sar_narrative
+from .agents.schemas import AgentInvestigateRequest
+from .agents.supervisor import supervisor
+from .ai.service import clear_ai_caches, generate_entity_summary, generate_sar_narrative
+from .ai.warmup import get_ai_warmup_status, trigger_ai_warmup
 from .ai.prompts_sar import build_sar_payload
 from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
@@ -69,6 +73,8 @@ async def upload_file(file: UploadFile) -> dict:
             raise HTTPException(status_code=400, detail=str(e))
 
     store.load_from_dict(snapshot)
+    clear_ai_caches()
+    trigger_ai_warmup(reason="upload")
 
     return {
         "status": "ok",
@@ -120,6 +126,8 @@ async def upload_mapped(file: UploadFile, mapping: str = Query(..., description=
         raise HTTPException(status_code=400, detail=str(e))
 
     store.load_from_dict(snapshot)
+    clear_ai_caches()
+    trigger_ai_warmup(reason="upload_mapped")
 
     return {
         "status": "ok",
@@ -135,6 +143,8 @@ async def load_sample() -> dict:
         raise HTTPException(status_code=404, detail="Sample data not found on server")
 
     store.load(DATA_PATH)
+    clear_ai_caches()
+    trigger_ai_warmup(reason="load_sample")
 
     return {
         "status": "ok",
@@ -484,6 +494,27 @@ async def get_asset(filename: str) -> FileResponse:
 
 # --- AI Copilot ---
 
+@router.get("/ai/warmup/status")
+async def ai_warmup_status() -> dict:
+    return get_ai_warmup_status()
+
+
+@router.post("/ai/warmup/trigger")
+async def ai_warmup_trigger(
+    bucket: int = Query(0, ge=0),
+    top_entities: int = Query(3, ge=0, le=20),
+    top_sar: int = Query(1, ge=0, le=10),
+) -> dict:
+    if not store.is_loaded:
+        raise HTTPException(status_code=400, detail="No dataset loaded. Call /load-sample or upload first.")
+    return trigger_ai_warmup(
+        bucket=bucket,
+        top_entities=top_entities,
+        top_sar=top_sar,
+        reason="manual_trigger",
+    )
+
+
 @router.get("/ai/explain/entity/{entity_id}")
 async def ai_explain_entity(
     entity_id: str,
@@ -629,9 +660,6 @@ async def get_dashboard(
 
 # --- Natural Language Query ---
 
-from pydantic import BaseModel
-
-
 class NLQParseRequest(BaseModel):
     query: str
     bucket: int
@@ -653,6 +681,109 @@ async def nlq_parse(req: NLQParseRequest) -> dict:
         "entity_ids": result["entity_ids"],
         "edges": result["edges"],
         "summary": result["summary"],
+    }
+
+
+# --- Multi-Agent Investigation ---
+
+@router.post("/agent/investigate")
+async def agent_investigate(req: AgentInvestigateRequest) -> dict:
+    if not store.is_loaded:
+        raise HTTPException(
+            status_code=400,
+            detail="No dataset loaded. Call /load-sample or upload data first.",
+        )
+    if req.bucket < 0 or req.bucket >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={req.bucket} out of range [0, {store.n_buckets - 1}]",
+        )
+
+    try:
+        return await supervisor.run(
+            query=req.query,
+            bucket=req.bucket,
+            include_sar=req.include_sar,
+            max_targets=req.max_targets,
+            profile=req.profile,
+            broadcast_fn=manager.broadcast,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agent investigation failed: {e}")
+
+
+@router.get("/agent/run/{run_id}")
+async def agent_get_run(run_id: str) -> dict:
+    run = supervisor.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return run
+
+
+@router.get("/agent/runs")
+async def agent_list_runs(
+    limit: int = Query(20, ge=1, le=100),
+    compact: bool = Query(True, description="Return summarized run records"),
+) -> dict:
+    runs = supervisor.list_runs(limit=limit)
+    if not compact:
+        return {"runs": runs}
+
+    summarized = []
+    for run in runs:
+        summarized.append({
+            "run_id": run.get("run_id"),
+            "status": run.get("status"),
+            "query": run.get("query"),
+            "bucket": run.get("bucket"),
+            "created_at": run.get("created_at"),
+            "updated_at": run.get("updated_at"),
+            "completed_at": run.get("completed_at"),
+            "error": run.get("error"),
+            "progress": run.get("progress", 0),
+            "current_step": run.get("current_step"),
+            "profile": run.get("config", {}).get("profile", "balanced"),
+        })
+    return {"runs": summarized}
+
+
+@router.get("/agent/presets")
+async def agent_presets() -> dict:
+    return {
+        "presets": [
+            {
+                "id": "high-risk",
+                "label": "High Risk Entities",
+                "query": "show high risk entities",
+                "profile": "balanced",
+                "include_sar": False,
+                "max_targets": 5,
+            },
+            {
+                "id": "large-incoming",
+                "label": "Large Incoming Flows",
+                "query": "show entities receiving large transaction volumes",
+                "profile": "balanced",
+                "include_sar": True,
+                "max_targets": 3,
+            },
+            {
+                "id": "structuring",
+                "label": "Structuring Patterns",
+                "query": "find structuring near threshold transactions",
+                "profile": "deep",
+                "include_sar": True,
+                "max_targets": 5,
+            },
+            {
+                "id": "circular",
+                "label": "Circular Flow Rings",
+                "query": "show circular flow and layering activity",
+                "profile": "deep",
+                "include_sar": False,
+                "max_targets": 8,
+            },
+        ]
     }
 
 

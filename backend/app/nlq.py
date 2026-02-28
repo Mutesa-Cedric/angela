@@ -120,6 +120,7 @@ def _handle_high_risk(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:50],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"{len(matched)} entities with risk >= {min_risk:.0%}",
     }
 
@@ -144,6 +145,7 @@ def _handle_large_incoming(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:50],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"{len(matched)} entities receiving >= ${min_amount:,.0f}",
     }
 
@@ -165,6 +167,7 @@ def _handle_high_risk_jurisdiction(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:50],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"{len(matched)} risky entities in jurisdiction {jurisdiction}",
     }
 
@@ -185,6 +188,7 @@ def _handle_structuring(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:50],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"{len(matched)} entities with structuring patterns",
     }
 
@@ -212,6 +216,7 @@ def _handle_circular_flow(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:50],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"{len(matched)} entities involved in circular flows",
     }
 
@@ -237,6 +242,7 @@ def _handle_top_clusters(params: dict, bucket: int) -> dict:
     return {
         "entity_ids": matched[:100],
         "edges": edges,
+        "total_count": len(matched),
         "summary": f"Top {len(top)} clusters ({len(matched)} entities)",
     }
 

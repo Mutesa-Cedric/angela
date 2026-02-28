@@ -33,6 +33,9 @@ class RunMemoryStore:
             "updated_at": now,
             "completed_at": None,
             "error": None,
+            "total_steps": 0,
+            "current_step": None,
+            "progress": 0.0,
             "steps": [],
             "artifacts": {},
             "result": None,
@@ -42,6 +45,12 @@ class RunMemoryStore:
             self._order.insert(0, run_id)
             self._prune_locked()
         return run_id
+
+    def set_total_steps(self, run_id: str, total_steps: int) -> None:
+        with self._lock:
+            run = self._runs[run_id]
+            run["total_steps"] = max(0, total_steps)
+            run["updated_at"] = _utc_now_iso()
 
     def start_step(
         self,
@@ -65,6 +74,8 @@ class RunMemoryStore:
                 "error": None,
             }
             run["steps"].append(step)
+            run["current_step"] = agent
+            run["progress"] = self._progress_locked(run)
             run["updated_at"] = _utc_now_iso()
             return step_index
 
@@ -83,6 +94,7 @@ class RunMemoryStore:
             step["output"] = copy.deepcopy(output) if output is not None else None
             step["error"] = error
             step["finished_at"] = _utc_now_iso()
+            run["progress"] = self._progress_locked(run)
             run["updated_at"] = _utc_now_iso()
 
     def set_artifact(self, run_id: str, key: str, value: Any) -> None:
@@ -97,6 +109,8 @@ class RunMemoryStore:
             run["status"] = "completed"
             run["result"] = copy.deepcopy(result)
             run["completed_at"] = _utc_now_iso()
+            run["current_step"] = None
+            run["progress"] = 100.0
             run["updated_at"] = run["completed_at"]
 
     def fail_run(self, run_id: str, error: str) -> None:
@@ -107,6 +121,8 @@ class RunMemoryStore:
             run["status"] = "failed"
             run["error"] = error
             run["completed_at"] = _utc_now_iso()
+            run["current_step"] = None
+            run["progress"] = self._progress_locked(run)
             run["updated_at"] = run["completed_at"]
 
     def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
@@ -126,4 +142,18 @@ class RunMemoryStore:
         self._order = self._order[: self._max_runs]
         for run_id in stale_ids:
             self._runs.pop(run_id, None)
+
+    def _progress_locked(self, run: Dict[str, Any]) -> float:
+        total_steps = int(run.get("total_steps") or 0)
+        if total_steps <= 0:
+            return 0.0
+
+        steps = run.get("steps", [])
+        completed = sum(1 for s in steps if s.get("status") == "completed")
+        running = any(s.get("status") == "running" for s in steps)
+
+        progress = (completed / total_steps) * 100.0
+        if running and completed < total_steps:
+            progress += 100.0 / (total_steps * 2.0)
+        return round(min(99.0, progress), 1)
 

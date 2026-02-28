@@ -53,12 +53,12 @@ function makeGeometry(
       break;
     }
     case "box": {
-      geo = new THREE.BoxGeometry(1.6, 1.6, 1.6, 1, 1, 1);
+      geo = new THREE.BoxGeometry(1.35, 1.35, 1.35, 1, 1, 1);
       break;
     }
     case "diamond": {
       const detail = lod === "hi" ? 1 : 0;
-      geo = new THREE.OctahedronGeometry(1, detail);
+      geo = new THREE.OctahedronGeometry(0.9, detail);
       break;
     }
   }

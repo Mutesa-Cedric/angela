@@ -29,12 +29,35 @@ import { wsClient } from "./api/ws";
 import { Autopilot } from "./camera/Autopilot";
 import * as dashboard from "./ui/dashboard";
 import { ENTITY_LINK_EVENT, renderMarkdownInto } from "./ui/markdown";
-import type { Snapshot, SnapshotNode } from "./types";
+import type { EntityDetail, Neighborhood, Snapshot, SnapshotNode } from "./types";
+import { SkyboxLayer } from "./skybox";
+import { AmbientAudioController, type AmbientAudioState } from "./ambientAudio";
 
 const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
 if (!canvas) throw new Error("Canvas element #scene-canvas not found");
 
+const skyboxFaces = [
+  new URL("../media/right.png", import.meta.url).href,
+  new URL("../media/left.png", import.meta.url).href,
+  new URL("../media/middle.png", import.meta.url).href,
+  new URL("../media/bottom.png", import.meta.url).href,
+  new URL("../media/front.png", import.meta.url).href,
+  new URL("../media/back.png", import.meta.url).href,
+] as const;
+const ambienceIntroUrl = new URL("../media/angela_track_intro.ogg", import.meta.url).href;
+const ambienceLoopUrl = new URL("../media/angela_track_loop.ogg", import.meta.url).href;
+
 const ctx = initScene(canvas);
+const skybox = new SkyboxLayer(ctx.scene, {
+  faces: skyboxFaces,
+});
+const ambience = new AmbientAudioController({
+  introUrl: ambienceIntroUrl,
+  loopUrl: ambienceLoopUrl,
+});
+ambience.armUserGestureUnlock();
+const sceneFog = ctx.scene.fog instanceof THREE.FogExp2 ? ctx.scene.fog : null;
+const baseFogDensity = sceneFog?.density ?? 0;
 const baseBloomStrength = ctx.bloomPass.strength;
 const baseBloomRadius = ctx.bloomPass.radius;
 const baseBloomThreshold = ctx.bloomPass.threshold;
@@ -45,17 +68,25 @@ let pitchModeEnabled = false;
 function applyPitchMode(enabled: boolean): void {
   pitchModeEnabled = enabled;
   document.body.classList.toggle("pitch-mode", enabled);
+  skybox.setPitchMode(enabled);
+  ambience.setPitchMode(enabled);
 
   if (enabled) {
-    ctx.bloomPass.strength = baseBloomStrength * 1.5;
-    ctx.bloomPass.radius = Math.min(1.2, baseBloomRadius + 0.2);
-    ctx.bloomPass.threshold = Math.max(0.65, baseBloomThreshold - 0.08);
-    ctx.renderer.toneMappingExposure = baseExposure * 1.08;
+    ctx.bloomPass.strength = baseBloomStrength * 1.35;
+    ctx.bloomPass.radius = Math.min(1.2, baseBloomRadius + 0.14);
+    ctx.bloomPass.threshold = Math.max(0.66, baseBloomThreshold - 0.06);
+    ctx.renderer.toneMappingExposure = baseExposure * 1.15;
+    if (sceneFog) {
+      sceneFog.density = Math.max(0.010, baseFogDensity * 0.9);
+    }
   } else {
     ctx.bloomPass.strength = baseBloomStrength;
     ctx.bloomPass.radius = baseBloomRadius;
     ctx.bloomPass.threshold = baseBloomThreshold;
     ctx.renderer.toneMappingExposure = baseExposure;
+    if (sceneFog) {
+      sceneFog.density = baseFogDensity;
+    }
   }
 
   const pitchBtn = document.getElementById("pitch-mode-btn") as HTMLButtonElement | null;
@@ -92,6 +123,55 @@ let currentSnapshot: Snapshot | null = null;
 let selectedId: string | null = null;
 let currentK = 1;
 let aiSummaryRequestToken = 0;
+const ENTITY_DETAIL_CACHE_MAX = 320;
+const ENTITY_NEIGHBOR_CACHE_MAX = 480;
+const ENTITY_SUMMARY_CACHE_MAX = 320;
+const entityDetailCache = new Map<string, EntityDetail>();
+const entityNeighborCache = new Map<string, Neighborhood>();
+const entitySummaryCache = new Map<string, string>();
+let entityLoadAbortController: AbortController | null = null;
+let aiSummaryAbortController: AbortController | null = null;
+let entitySelectionRequestSeq = 0;
+
+function detailCacheKey(entityId: string, t: number): string {
+  return `${t}:${entityId}`;
+}
+
+function neighborCacheKey(entityId: string, t: number, k: number): string {
+  return `${t}:${k}:${entityId}`;
+}
+
+function lruGet<T>(cache: Map<string, T>, key: string): T | null {
+  const value = cache.get(key);
+  if (value === undefined) return null;
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
+}
+
+function lruSet<T>(cache: Map<string, T>, key: string, value: T, maxEntries: number): void {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > maxEntries) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
+  }
+}
+
+function clearEntityInteractionCaches(): void {
+  entityDetailCache.clear();
+  entityNeighborCache.clear();
+  entitySummaryCache.clear();
+}
+
+function getRiskScoreMap(snapshot: Snapshot): Map<string, number> {
+  const riskScores = new Map<string, number>();
+  for (const node of snapshot.nodes) {
+    riskScores.set(node.id, node.risk_score);
+  }
+  return riskScores;
+}
 
 // K-hop control
 const khopSelect = document.getElementById("khop-select") as HTMLSelectElement;
@@ -110,6 +190,31 @@ document.getElementById("cam-focus")!.addEventListener("click", () => {
   camera.focusEntity(ctx, nodeLayer, selectedId);
 });
 
+// --- Legend collapse/expand ---
+
+const legend = document.getElementById("legend") as HTMLDivElement | null;
+const legendToggleBtn = document.getElementById("legend-toggle-btn") as HTMLButtonElement | null;
+const legendSubtitle = document.getElementById("legend-subtitle") as HTMLDivElement | null;
+
+function applyLegendCollapsed(collapsed: boolean): void {
+  if (!legend || !legendToggleBtn) return;
+  legend.classList.toggle("collapsed", collapsed);
+  legendToggleBtn.textContent = collapsed ? "EXPAND" : "MINIMIZE";
+  legendToggleBtn.title = collapsed ? "Expand visual guide" : "Minimize visual guide";
+  legendToggleBtn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  if (legendSubtitle) {
+    legendSubtitle.textContent = collapsed ? "Visual Guide (Minimized)" : "Visual Guide";
+  }
+}
+
+if (legend && legendToggleBtn) {
+  legendToggleBtn.addEventListener("click", () => {
+    applyLegendCollapsed(!legend.classList.contains("collapsed"));
+  });
+  // Start fully expanded for first-time viewers and judges.
+  applyLegendCollapsed(false);
+}
+
 // --- Data loading ---
 
 async function loadBucket(t: number): Promise<void> {
@@ -119,7 +224,7 @@ async function loadBucket(t: number): Promise<void> {
     edgeLayer.clear();
     clusterLayer.clear();
     assetLayer.clear();
-    panel.setBucket(t);
+    panel.setBucket(t, currentSnapshot.meta.n_buckets);
 
     // Load clusters asynchronously
     getClusters(t)
@@ -145,16 +250,20 @@ async function loadBucket(t: number): Promise<void> {
 }
 
 async function loadNeighborEdges(entityId: string, t: number, k: number): Promise<void> {
+  const cacheKey = neighborCacheKey(entityId, t, k);
   try {
-    const neighborhood = await getNeighbors(entityId, t, k);
-    const riskScores = new Map<string, number>();
-    if (currentSnapshot) {
-      for (const node of currentSnapshot.nodes) {
-        riskScores.set(node.id, node.risk_score);
-      }
+    let neighborhood = lruGet(entityNeighborCache, cacheKey);
+    if (!neighborhood) {
+      neighborhood = await getNeighbors(entityId, t, k);
+      lruSet(entityNeighborCache, cacheKey, neighborhood, ENTITY_NEIGHBOR_CACHE_MAX);
     }
-    edgeLayer.update(neighborhood.edges, nodeLayer, riskScores);
+
+    if (!currentSnapshot || currentSnapshot.meta.t !== t) return;
+    if (selectedId && selectedId !== entityId) return;
+
+    edgeLayer.update(neighborhood.edges, nodeLayer, getRiskScoreMap(currentSnapshot));
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error("Failed to load neighbors:", err);
   }
 }
@@ -162,8 +271,19 @@ async function loadNeighborEdges(entityId: string, t: number, k: number): Promis
 // --- Selection ---
 
 async function selectEntity(entityId: string | null): Promise<void> {
+  if (entityId && entityId === selectedId && currentSnapshot) {
+    return;
+  }
+
   selectedId = entityId;
   nodeLayer.select(entityId);
+  entitySelectionRequestSeq += 1;
+  const selectionSeq = entitySelectionRequestSeq;
+
+  entityLoadAbortController?.abort();
+  entityLoadAbortController = null;
+  aiSummaryAbortController?.abort();
+  aiSummaryAbortController = null;
 
   if (!entityId || !currentSnapshot) {
     aiSummaryRequestToken += 1;
@@ -172,40 +292,100 @@ async function selectEntity(entityId: string | null): Promise<void> {
     return;
   }
 
-  panel.showLoading();
+  const bucket = currentSnapshot.meta.t;
+  const k = currentK;
+  const detailKey = detailCacheKey(entityId, bucket);
+  const neighborsKey = neighborCacheKey(entityId, bucket, k);
+  const summaryKey = detailCacheKey(entityId, bucket);
+  const cachedDetail = lruGet(entityDetailCache, detailKey);
+  const cachedNeighbors = lruGet(entityNeighborCache, neighborsKey);
+
+  if (!cachedDetail || !cachedNeighbors) {
+    panel.showLoading();
+  }
+
+  entityLoadAbortController = new AbortController();
   try {
     const [detail, neighborhood] = await Promise.all([
-      getEntity(entityId, currentSnapshot.meta.t),
-      getNeighbors(entityId, currentSnapshot.meta.t, currentK),
+      cachedDetail
+        ? Promise.resolve(cachedDetail)
+        : getEntity(entityId, bucket, entityLoadAbortController.signal).then((value) => {
+          lruSet(entityDetailCache, detailKey, value, ENTITY_DETAIL_CACHE_MAX);
+          return value;
+        }),
+      cachedNeighbors
+        ? Promise.resolve(cachedNeighbors)
+        : getNeighbors(entityId, bucket, k, entityLoadAbortController.signal).then((value) => {
+          lruSet(entityNeighborCache, neighborsKey, value, ENTITY_NEIGHBOR_CACHE_MAX);
+          return value;
+        }),
     ]);
 
-    // Update edges from the neighborhood data
-    const riskScores = new Map<string, number>();
-    for (const node of currentSnapshot.nodes) {
-      riskScores.set(node.id, node.risk_score);
+    if (
+      selectionSeq !== entitySelectionRequestSeq
+      || selectedId !== entityId
+      || !currentSnapshot
+      || currentSnapshot.meta.t !== bucket
+    ) {
+      return;
     }
-    edgeLayer.update(neighborhood.edges, nodeLayer, riskScores);
+
+    edgeLayer.update(neighborhood.edges, nodeLayer, getRiskScoreMap(currentSnapshot));
 
     panel.show(detail, neighborhood);
 
     // Fire AI summary asynchronously — don't block panel
     const summaryToken = ++aiSummaryRequestToken;
-    const summaryBucket = currentSnapshot.meta.t;
-    getAIExplanation(entityId, currentSnapshot.meta.t)
+    const cachedSummary = lruGet(entitySummaryCache, summaryKey);
+    if (cachedSummary) {
+      if (
+        summaryToken === aiSummaryRequestToken
+        && selectedId === entityId
+        && currentSnapshot
+        && currentSnapshot.meta.t === bucket
+      ) {
+        panel.setAISummary(cachedSummary);
+      }
+      return;
+    }
+
+    aiSummaryAbortController = new AbortController();
+    getAIExplanation(entityId, bucket, aiSummaryAbortController.signal)
       .then((res) => {
+        const summary = (res.summary || "").trim();
+        if (summary) {
+          lruSet(entitySummaryCache, summaryKey, summary, ENTITY_SUMMARY_CACHE_MAX);
+          return summary;
+        }
+        return "AI summary unavailable.";
+      })
+      .then((summary) => {
         if (
           summaryToken === aiSummaryRequestToken
           && selectedId === entityId
           && currentSnapshot
-          && currentSnapshot.meta.t === summaryBucket
+          && currentSnapshot.meta.t === bucket
         ) {
-          panel.setAISummary(res.summary || "AI summary unavailable.");
+          panel.setAISummary(summary);
         }
       })
-      .catch(() => panel.setAISummary("AI summary unavailable."));
+      .catch((err) => {
+        if (isAbortError(err)) return;
+        if (
+          summaryToken === aiSummaryRequestToken
+          && selectedId === entityId
+          && currentSnapshot
+          && currentSnapshot.meta.t === bucket
+        ) {
+          panel.setAISummary("AI summary unavailable.");
+        }
+      });
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error("Failed to load entity:", err);
     panel.hide();
+  } finally {
+    entityLoadAbortController = null;
   }
 }
 
@@ -395,10 +575,40 @@ canvas.addEventListener("pointermove", (e) => {
 
 const autopilot = new Autopilot(ctx, nodeLayer);
 const autopilotBtn = document.getElementById("autopilot-btn") as HTMLButtonElement;
+const ambienceBtn = document.getElementById("ambience-btn") as HTMLButtonElement;
+
+function renderAmbienceButton(state: AmbientAudioState): void {
+  ambienceBtn.classList.toggle("active", state.enabled);
+  ambienceBtn.classList.toggle("muted", !state.enabled);
+  ambienceBtn.classList.toggle("ducked", state.enabled && state.voiceoverActive);
+
+  if (!state.enabled) {
+    ambienceBtn.textContent = "MUSIC";
+    ambienceBtn.title = "Enable soft ambience (Shift+M)";
+    return;
+  }
+
+  if (!state.ready) {
+    ambienceBtn.textContent = "MUSIC ARM";
+    ambienceBtn.title = "Click to unlock soft ambience audio (Shift+M)";
+    return;
+  }
+
+  ambienceBtn.textContent = state.voiceoverActive ? "MUSIC DUCK" : "MUSIC ON";
+  ambienceBtn.title = state.voiceoverActive
+    ? "Ambience ducked for voice-over compatibility (Shift+M)"
+    : "Disable soft ambience (Shift+M)";
+}
+
+ambience.onStateChange(renderAmbienceButton);
+ambienceBtn.addEventListener("click", () => {
+  ambience.toggleEnabled();
+});
 
 autopilot.onState((state) => {
   autopilotBtn.textContent = state === "running" ? "STOP" : "AUTOPILOT";
   autopilotBtn.classList.toggle("running", state === "running");
+  ambience.setAutopilotActive(state === "running");
 });
 
 autopilotBtn.addEventListener("click", () => {
@@ -412,7 +622,7 @@ const dashboardBtn = document.getElementById("dashboard-btn") as HTMLButtonEleme
 
 dashboard.onToggle((open) => {
   dashboardBtn.classList.toggle("active", open);
-  dashboardBtn.textContent = open ? "EXEC ON" : "EXEC";
+  dashboardBtn.textContent = open ? "GRAPH" : "EXEC";
 });
 
 dashboardBtn.addEventListener("click", () => {
@@ -424,9 +634,15 @@ const pitchModeBtn = document.getElementById("pitch-mode-btn") as HTMLButtonElem
 pitchModeBtn.addEventListener("click", () => togglePitchMode());
 
 window.addEventListener("keydown", (e) => {
-  if (e.key.toLowerCase() === "p" && e.shiftKey) {
+  const key = e.key.toLowerCase();
+  if (e.shiftKey && key === "p") {
     e.preventDefault();
     togglePitchMode();
+    return;
+  }
+  if (e.shiftKey && key === "m") {
+    e.preventDefault();
+    ambience.toggleEnabled();
   }
 });
 
@@ -456,7 +672,26 @@ const agentHistory = document.getElementById("agent-history") as HTMLDivElement;
 
 type AgentStepStatus = "pending" | "running" | "completed" | "failed";
 type AgentProfile = "fast" | "balanced" | "deep";
+type AgentVisualState = "idle" | "running" | "completed" | "failed" | "aborted";
 const AGENT_STEP_ORDER = ["intake", "research", "analysis", "reporting"] as const;
+const AGENT_STEP_META: Record<(typeof AGENT_STEP_ORDER)[number], { label: string; cue: string }> = {
+  intake: {
+    label: "Intake",
+    cue: "Parsing objective and extracting intent.",
+  },
+  research: {
+    label: "Research",
+    cue: "Traversing flows and ranking candidate entities.",
+  },
+  analysis: {
+    label: "Analysis",
+    cue: "Scoring risk patterns and triaging top signals.",
+  },
+  reporting: {
+    label: "Reporting",
+    cue: "Drafting investigator briefing and SAR context.",
+  },
+};
 
 let nlqAbortController: AbortController | null = null;
 let nlqRequestSeq = 0;
@@ -513,6 +748,7 @@ function isAbortError(err: unknown): boolean {
 function setAgentProgress(progressPct: number): void {
   const clamped = Math.max(0, Math.min(100, progressPct));
   agentProgressFill.style.width = `${clamped}%`;
+  agentResult.dataset.progress = String(Math.round(clamped));
 }
 
 function computeAgentProgress(): number {
@@ -524,6 +760,11 @@ function computeAgentProgress(): number {
   return Math.round(Math.min(99, pct));
 }
 
+function setAgentVisualState(state: AgentVisualState): void {
+  agentResult.dataset.state = state;
+  document.body.classList.toggle("agent-run-live", state === "running");
+}
+
 function resetAgentSteps(): void {
   agentStepState = {
     intake: "pending",
@@ -531,30 +772,28 @@ function resetAgentSteps(): void {
     analysis: "pending",
     reporting: "pending",
   };
+  agentResult.dataset.activeStep = "";
+  setAgentVisualState("idle");
   renderAgentSteps();
   setAgentProgress(0);
 }
 
 function renderAgentSteps(): void {
   agentSteps.innerHTML = AGENT_STEP_ORDER
-    .map((name) => {
+    .map((name, idx) => {
       const status = agentStepState[name] ?? "pending";
-      return `<span class="agent-step-pill ${status}">${name}</span>`;
+      const meta = AGENT_STEP_META[name];
+      return `<span class="agent-step-pill ${status}" data-step="${name}" data-status="${status}" title="${meta.cue}">
+        <span class="agent-step-index">${idx + 1}</span>
+        <span class="agent-step-name">${meta.label}</span>
+      </span>`;
     })
     .join("");
 }
 
 function setAgentStatus(text: string, tone: "info" | "ok" | "warn" | "error" = "info"): void {
   agentStatus.textContent = text;
-  if (tone === "ok") {
-    agentStatus.style.color = "#66d3b3";
-  } else if (tone === "warn") {
-    agentStatus.style.color = "#ffcc66";
-  } else if (tone === "error") {
-    agentStatus.style.color = "#ff7a6b";
-  } else {
-    agentStatus.style.color = "#88b";
-  }
+  agentStatus.dataset.tone = tone;
 }
 
 function setAgentRunning(running: boolean): void {
@@ -566,11 +805,30 @@ function setAgentRunning(running: boolean): void {
   agentMaxTargets.disabled = running;
   agentProfile.disabled = running;
   nlqBar.classList.toggle("agent-running", running);
+  agentStatus.dataset.live = running ? "1" : "0";
+  agentMetrics.classList.toggle("live", running);
+  if (running) {
+    setAgentVisualState("running");
+  } else if (agentResult.dataset.state === "running") {
+    setAgentVisualState("idle");
+    agentResult.dataset.activeStep = "";
+  }
 }
 
 function setAgentStepStatus(agent: string, status: AgentStepStatus): void {
   if (!Object.prototype.hasOwnProperty.call(agentStepState, agent)) return;
   agentStepState[agent] = status;
+  const typedAgent = agent as (typeof AGENT_STEP_ORDER)[number];
+  const meta = AGENT_STEP_META[typedAgent];
+  if (status === "running") {
+    agentResult.dataset.activeStep = `${meta.label} | ${meta.cue}`;
+    agentMetrics.textContent = meta.cue;
+  } else if (status === "failed") {
+    agentResult.dataset.activeStep = `${meta.label} | FAILED`;
+    setAgentVisualState("failed");
+  } else if (!AGENT_STEP_ORDER.some((name) => agentStepState[name] === "running")) {
+    agentResult.dataset.activeStep = "";
+  }
   renderAgentSteps();
   setAgentProgress(computeAgentProgress());
 }
@@ -644,9 +902,9 @@ function renderAgentHistory(): void {
   agentHistory.innerHTML = `
     <div class="agent-history-title">Recent Runs</div>
     ${agentRunSummaries.slice(0, 4).map((run) => `
-      <div class="agent-history-row" data-run-id="${run.run_id}">
-        <span>${run.status.toUpperCase()} ${Math.round(run.progress)}%</span>
-        <span title="${run.query}">${run.query.slice(0, 36)}${run.query.length > 36 ? "..." : ""}</span>
+      <div class="agent-history-row status-${run.status}" data-run-id="${run.run_id}">
+        <span class="agent-history-state">${run.status.toUpperCase()} ${Math.round(run.progress)}%</span>
+        <span class="agent-history-query" title="${run.query}">${run.query.slice(0, 36)}${run.query.length > 36 ? "..." : ""}</span>
       </div>
     `).join("")}
   `;
@@ -720,8 +978,10 @@ function handleAgentEvent(event: string, data: Record<string, unknown>): void {
 
   if (event === "AGENT_RUN_STARTED") {
     agentResult.style.display = "flex";
+    setAgentVisualState("running");
     setAgentProgress(4);
-    setAgentStatus("Run started. Agents are executing...", "info");
+    setAgentStatus("Run started. Specialist agents are coming online...", "info");
+    agentMetrics.textContent = "Supervisor: dispatching intake -> research -> analysis -> reporting.";
     return;
   }
 
@@ -738,12 +998,14 @@ function handleAgentEvent(event: string, data: Record<string, unknown>): void {
   }
 
   if (event === "AGENT_RUN_COMPLETED") {
+    setAgentVisualState("completed");
     setAgentProgress(100);
-    setAgentStatus("Run completed.", "ok");
+    setAgentStatus("Run completed. Briefing package is ready.", "ok");
     return;
   }
 
   if (event === "AGENT_RUN_FAILED") {
+    setAgentVisualState("failed");
     const errMsg = typeof data.error === "string" ? data.error : "Agent run failed.";
     setAgentStatus(errMsg, "error");
   }
@@ -765,8 +1027,8 @@ async function runAgentFlow(): Promise<void> {
 
   activeAgentRunId = null;
   agentRunId.textContent = "";
-  setAgentSummaryMarkdown("The graph remains interactive while this run executes.");
-  agentMetrics.textContent = "";
+  setAgentSummaryMarkdown("**Agentic run in progress.** The graph stays interactive while the supervisor coordinates specialist agents.");
+  agentMetrics.textContent = "Bootstrapping orchestration graph...";
   agentTopEntities.innerHTML = "";
   agentResult.style.display = "flex";
   resetAgentSteps();
@@ -793,7 +1055,8 @@ async function runAgentFlow(): Promise<void> {
 
     activeAgentRunId = result.run_id;
     agentRunId.textContent = result.run_id;
-    setAgentStatus("Run completed.", "ok");
+    setAgentVisualState("completed");
+    setAgentStatus("Run completed. Briefing package is ready.", "ok");
     setAgentStepStatus("intake", "completed");
     setAgentStepStatus("research", "completed");
     setAgentStepStatus("analysis", "completed");
@@ -816,11 +1079,13 @@ async function runAgentFlow(): Promise<void> {
   } catch (err) {
     if (requestSeq !== agentRequestSeq) return;
     if (isAbortError(err)) {
+      setAgentVisualState("aborted");
       setAgentStatus("Client wait canceled. Server run may still complete.", "warn");
       setAgentSummaryMarkdown("You can still retrieve the run from `/api/agent/runs`.");
       setAgentProgress(computeAgentProgress());
       await refreshAgentHistory();
     } else {
+      setAgentVisualState("failed");
       setAgentStatus("Run failed.", "error");
       setAgentSummaryMarkdown(err instanceof Error ? err.message : "Unknown error");
       setAgentProgress(computeAgentProgress());
@@ -928,6 +1193,7 @@ ctx.onFrame(() => {
   const dt = (now - lastFrameTime) / 1000;
   lastFrameTime = now;
 
+  skybox.tick(dt);
   nodeLayer.animate(dt);
   clusterLayer.animate();
   autopilot.tick(dt);
@@ -947,9 +1213,17 @@ reuploadBtn.addEventListener("click", () => {
 // --- Init ---
 
 async function startGraph(preloaded?: Snapshot): Promise<void> {
+  clearEntityInteractionCaches();
+  entityLoadAbortController?.abort();
+  entityLoadAbortController = null;
+  aiSummaryAbortController?.abort();
+  aiSummaryAbortController = null;
+  aiSummaryRequestToken += 1;
+
   const snapshot = preloaded ?? await getSnapshot(0);
   slider.init(snapshot.meta.n_buckets, 0);
   currentSnapshot = snapshot;
+  panel.setBucket(snapshot.meta.t, snapshot.meta.n_buckets);
   nodeLayer.update(snapshot.nodes);
   stats.updateCounts(snapshot.nodes.length, snapshot.edges.length);
 

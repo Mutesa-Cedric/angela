@@ -76,7 +76,7 @@ export class ClusterLayer {
       const ringMat = new THREE.MeshBasicMaterial({
         color: riskColor,
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.48,
         depthWrite: false,
       });
       const ring = new THREE.Mesh(ringGeo, ringMat);
@@ -90,7 +90,7 @@ export class ClusterLayer {
       const beaconMat = new THREE.MeshBasicMaterial({
         color: riskColor,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.84,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
@@ -131,7 +131,7 @@ export class ClusterLayer {
 
       // Ring opacity breathing
       const ringMat = vis.ring.material as THREE.MeshBasicMaterial;
-      ringMat.opacity = 0.25 + Math.sin(time * 1.2) * 0.1 * vis.riskScore;
+      ringMat.opacity = 0.34 + Math.sin(time * 1.2) * 0.12 * vis.riskScore;
 
       // Beacon rotation and pulse
       vis.beacon.rotation.y = time * 0.5;
@@ -175,8 +175,8 @@ export class ClusterLayer {
   }
 
   private riskToColor(risk: number): THREE.Color {
-    if (risk < 0.4) return new THREE.Color(0x4488ff);
-    if (risk < 0.6) return new THREE.Color(0xffaa00);
-    return new THREE.Color(0xff4422);
+    if (risk < 0.4) return new THREE.Color(0x6ea7ff);
+    if (risk < 0.6) return new THREE.Color(0xffbf57);
+    return new THREE.Color(0xff6a54);
   }
 }

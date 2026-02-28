@@ -26,8 +26,8 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x060610);
-  // Subtle exponential fog — separates foreground from background without obvious haze
-  scene.fog = new THREE.FogExp2(0x060610, 0.022);
+  // Lighter fog improves depth without obscuring node/edge readability.
+  scene.fog = new THREE.FogExp2(0x0b1020, 0.015);
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -35,37 +35,43 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
     0.1,
     1000,
   );
-  camera.position.set(15, 12, 15);
+  camera.position.set(24, 16, 24);
   camera.lookAt(0, 0, 0);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.target.set(0, 2, 0);
+  controls.dampingFactor = 0.06;
+  controls.target.set(0, 2.8, 0);
+  controls.minDistance = 4;
+  controls.maxDistance = 140;
+  controls.maxPolarAngle = Math.PI * 0.495;
 
   // Cinematic lighting
-  const ambient = new THREE.AmbientLight(0x8899bb, 0.4);
+  const ambient = new THREE.AmbientLight(0x95aacd, 0.62);
   scene.add(ambient);
 
-  const directional = new THREE.DirectionalLight(0xffeedd, 0.6);
+  const directional = new THREE.DirectionalLight(0xfff1dc, 0.82);
   directional.position.set(10, 20, 15);
   scene.add(directional);
 
-  const fillLight = new THREE.PointLight(0x4488ff, 0.4, 60);
+  const hemi = new THREE.HemisphereLight(0x8db2de, 0x101828, 0.28);
+  scene.add(hemi);
+
+  const fillLight = new THREE.PointLight(0x5fa0ff, 0.62, 70);
   fillLight.position.set(0, 15, 0);
   scene.add(fillLight);
 
-  const rimLight = new THREE.PointLight(0xff6633, 0.25, 50);
+  const rimLight = new THREE.PointLight(0xff8a55, 0.36, 65);
   rimLight.position.set(-10, 5, -10);
   scene.add(rimLight);
 
   // Subtle warm uplight — lifts shadows under the graph
-  const upLight = new THREE.PointLight(0x334466, 0.3, 40);
+  const upLight = new THREE.PointLight(0x3f5e88, 0.42, 56);
   upLight.position.set(0, -5, 0);
   scene.add(upLight);
 
   // Ground grid for spatial reference
-  const grid = new THREE.GridHelper(50, 50, 0x181828, 0x0d0d18);
+  const grid = new THREE.GridHelper(76, 76, 0x314f78, 0x182437);
   grid.position.y = -0.1;
   scene.add(grid);
 
@@ -75,9 +81,9 @@ export function initScene(canvas: HTMLCanvasElement): SceneContext {
   // Selective bloom: high threshold ensures only glow sprites and emissive surfaces bloom
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.5,  // strength — subtle, cinematic
-    0.6,  // radius — wide soft falloff
-    0.85, // threshold — only the brightest surfaces bloom
+    0.58, // strength — subtle, cinematic
+    0.65, // radius — wide soft falloff
+    0.82, // threshold — only the brightest surfaces bloom
   );
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());

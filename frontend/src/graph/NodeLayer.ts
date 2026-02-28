@@ -9,12 +9,13 @@ const _dummy = new THREE.Object3D();
 const _color = new THREE.Color();
 const _tmpA = new THREE.Color();
 const _tmpB = new THREE.Color();
+const _tmpC = new THREE.Color();
 
 // ── Visual encoding constants ──────────────────────────────────────────
 
 /** Log-scaled volume → radius. */
-const MIN_RADIUS = 0.10;
-const MAX_RADIUS = 0.55;
+const MIN_RADIUS = 0.08;
+const MAX_RADIUS = 0.42;
 
 /** Risk glow thresholds. */
 const GLOW_RISK_MIN = 0.25;
@@ -22,7 +23,8 @@ const GLOW_RISK_FULL = 0.65;
 
 /** De-emphasis: low-risk nodes get dimmed. */
 const DEEMPH_RISK_THRESHOLD = 0.15;
-const DEEMPH_BRIGHTNESS = 0.35; // multiplier for low-risk node color
+const DEEMPH_BRIGHTNESS = 0.56; // multiplier for low-risk node color
+const NLQ_DIM_MULTIPLIER = 0.28;
 
 /** Risk pulse period (seconds) for high-risk emissive cycle. */
 const PULSE_PERIOD = 3.0;
@@ -48,11 +50,11 @@ const TRANSITION_DURATION = 0.6;
 /** Map risk [0,1] to a continuous color gradient. */
 function riskColor(risk: number): THREE.Color {
   if (risk < 0.3) {
-    return _tmpA.set(0x1a3366).lerp(_tmpB.set(0x22aa88), risk / 0.3);
+    return _tmpA.set(0x2f5ea8).lerp(_tmpB.set(0x29c79a), risk / 0.3);
   } else if (risk < 0.6) {
-    return _tmpA.set(0x22aa88).lerp(_tmpB.set(0xffaa00), (risk - 0.3) / 0.3);
+    return _tmpA.set(0x29c79a).lerp(_tmpB.set(0xffb347), (risk - 0.3) / 0.3);
   } else {
-    return _tmpA.set(0xffaa00).lerp(_tmpB.set(0xff2222), (risk - 0.6) / 0.4);
+    return _tmpA.set(0xffb347).lerp(_tmpB.set(0xff4f4f), (risk - 0.6) / 0.4);
   }
 }
 
@@ -70,7 +72,7 @@ function jurisdictionColor(bucket: number): THREE.Color {
 function volumeToRadius(volume: number): number {
   if (volume <= 0) return MIN_RADIUS;
   // log1p to handle 0 gracefully; normalize against typical range
-  const t = Math.log1p(volume) / Math.log1p(500_000); // ~500k as "large"
+  const t = Math.log1p(volume) / Math.log1p(1_000_000); // compress large-volume outliers
   return MIN_RADIUS + Math.min(t, 1) * (MAX_RADIUS - MIN_RADIUS);
 }
 
@@ -133,8 +135,8 @@ export class NodeLayer {
       );
       const mat = new THREE.MeshStandardMaterial({
         vertexColors: false,
-        roughness: 0.3,
-        metalness: 0.15,
+        roughness: 0.22,
+        metalness: 0.08,
         emissive: new THREE.Color(0x000000),
         emissiveIntensity: 0,
       });
@@ -202,9 +204,11 @@ export class NodeLayer {
       const jColor = jurisdictionColor(node.jurisdiction_bucket);
       const riskT = node.risk_score;
       // Blend jurisdiction color with risk tint for high-risk entities
-      const finalColor = _tmpA
+      const finalColor = _tmpC
         .copy(jColor)
-        .lerp(riskColor(riskT), Math.min(riskT * 1.5, 0.8));
+        .lerp(riskColor(riskT), Math.min(riskT * 1.45, 0.85));
+      // Keep a minimum luminance floor so nodes remain legible over dramatic backgrounds.
+      finalColor.lerp(_tmpB.set(0xffffff), 0.06 + riskT * 0.08);
 
       // B) De-emphasize low-risk nodes — dim color, lower visual weight
       if (riskT < DEEMPH_RISK_THRESHOLD) {
@@ -287,7 +291,7 @@ export class NodeLayer {
     if (this.highlightSet !== null) {
       const entityId = this.globalToId.get(globalIdx);
       if (entityId && !this.highlightSet.has(entityId)) {
-        _color.multiplyScalar(0.15);
+        _color.multiplyScalar(NLQ_DIM_MULTIPLIER);
       }
     }
 
@@ -416,7 +420,7 @@ export class NodeLayer {
 
       const sprite = new THREE.Sprite(mat);
       // Wider halo for premium feel
-      const glowScale = s.tScale * (3.0 + s.tEmissive * 2.5);
+      const glowScale = s.tScale * (2.5 + s.tEmissive * 2.1);
       sprite.scale.setScalar(glowScale);
       sprite.position.set(s.px, s.py, s.pz);
       (sprite as unknown as Record<string, number>).__globalIdx = i;
@@ -437,7 +441,7 @@ export class NodeLayer {
       // Smooth breathing pulse — slower, more organic
       const phase = time * (Math.PI * 2 / PULSE_PERIOD) + gi * 0.9;
       const pulse = 1 + Math.sin(phase) * 0.12 * s.emissive;
-      const glowScale = s.scale * (3.0 + s.emissive * 2.5) * pulse;
+      const glowScale = s.scale * (2.5 + s.emissive * 2.1) * pulse;
       sprite.scale.setScalar(glowScale);
 
       // Gentle opacity breathing

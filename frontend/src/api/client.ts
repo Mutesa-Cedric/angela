@@ -31,19 +31,24 @@ export function getSnapshot(t: number): Promise<Snapshot> {
   return fetchJSON<Snapshot>(`${BASE}/snapshot?t=${t}`);
 }
 
-export function getEntity(id: string, t?: number): Promise<EntityDetail> {
+export function getEntity(id: string, t?: number, signal?: AbortSignal): Promise<EntityDetail> {
   const params = t !== undefined ? `?t=${t}` : "";
-  return fetchJSON<EntityDetail>(`${BASE}/entity/${encodeURIComponent(id)}${params}`);
+  return fetchJSON<EntityDetail>(`${BASE}/entity/${encodeURIComponent(id)}${params}`, signal ? { signal } : undefined);
 }
 
-export function getNeighbors(id: string, t: number, k: number = 1): Promise<Neighborhood> {
+export function getNeighbors(id: string, t: number, k: number = 1, signal?: AbortSignal): Promise<Neighborhood> {
   return fetchJSON<Neighborhood>(
     `${BASE}/neighbors?id=${encodeURIComponent(id)}&t=${t}&k=${k}`,
+    signal ? { signal } : undefined,
   );
 }
 
-export function getAIExplanation(id: string, t: number): Promise<{ entity_id: string; bucket: number; summary: string }> {
-  return fetchJSON(`${BASE}/ai/explain/entity/${encodeURIComponent(id)}?t=${t}`);
+export function getAIExplanation(
+  id: string,
+  t: number,
+  signal?: AbortSignal,
+): Promise<{ entity_id: string; bucket: number; summary: string }> {
+  return fetchJSON(`${BASE}/ai/explain/entity/${encodeURIComponent(id)}?t=${t}`, signal ? { signal } : undefined);
 }
 
 export function getStatus(): Promise<{ loaded: boolean; n_entities: number; n_transactions: number; n_buckets: number }> {

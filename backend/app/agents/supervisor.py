@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
 
@@ -219,6 +220,38 @@ class InvestigationSupervisor:
 
     def list_runs(self, limit: int = 20) -> list:
         return self.memory.list_runs(limit=limit)
+
+    def materialize_cached_result(
+        self,
+        cached_result: Dict[str, Any],
+        query: str,
+        bucket: int,
+        include_sar: bool,
+        max_targets: int,
+        profile: str,
+    ) -> Dict[str, Any]:
+        """Create a completed run record from a cached response payload."""
+        run_id = self.memory.create_run(
+            query=query,
+            bucket=bucket,
+            config={
+                "include_sar": include_sar,
+                "max_targets": max_targets,
+                "profile": profile,
+                "cached": True,
+            },
+        )
+        self.memory.set_total_steps(run_id, 4)
+
+        result = copy.deepcopy(cached_result)
+        result["run_id"] = run_id
+        result["status"] = "completed"
+        result["query"] = query
+        result["bucket"] = bucket
+        result["profile"] = profile
+        result["cache_hit"] = True
+        self.memory.complete_run(run_id, result)
+        return result
 
 
 async def _emit(

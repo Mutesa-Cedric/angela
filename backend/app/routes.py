@@ -2,6 +2,7 @@ import json
 import random
 from collections import deque
 from enum import Enum
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -19,6 +20,7 @@ from .config import DATA_PATH
 from .counterfactual import compute_counterfactual
 from .nlq import parse_query, execute_intent
 from .investigation import generate_investigation_targets
+from .input_memory import input_memory
 from .csv_processor import process_csv, process_csv_mapped, preview_csv
 from .dashboard import compute_dashboard
 from .data_loader import store
@@ -35,6 +37,19 @@ from .ws import manager
 router = APIRouter()
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+def _normalize_query(query: str) -> str:
+    return " ".join((query or "").strip().split())
+
+
+def _dataset_stamp() -> str:
+    if not store.is_loaded:
+        return "unloaded"
+    sample_type = str(store.metadata.get("sample_type", "unknown"))
+    tail = store.transactions[-1] if store.transactions else {}
+    tail_key = str(tail.get("tx_id") or tail.get("timestamp") or "none")
+    return f"{sample_type}:{store.n_buckets}:{len(store.entities)}:{len(store.transactions)}:{tail_key}"
 
 
 # --- Status + Upload ---
@@ -74,6 +89,7 @@ async def upload_file(file: UploadFile) -> dict:
 
     store.load_from_dict(snapshot)
     clear_ai_caches()
+    input_memory.clear_cache()
     trigger_ai_warmup(reason="upload")
 
     return {
@@ -127,6 +143,7 @@ async def upload_mapped(file: UploadFile, mapping: str = Query(..., description=
 
     store.load_from_dict(snapshot)
     clear_ai_caches()
+    input_memory.clear_cache()
     trigger_ai_warmup(reason="upload_mapped")
 
     return {
@@ -144,6 +161,7 @@ async def load_sample() -> dict:
 
     store.load(DATA_PATH)
     clear_ai_caches()
+    input_memory.clear_cache()
     trigger_ai_warmup(reason="load_sample")
 
     return {
@@ -434,6 +452,7 @@ async def inject_anomaly(
     all_bucket_tx = store.get_bucket_transactions(t)
     bucket_size = store.metadata.get("bucket_size_seconds", 86400)
     store.risk_by_bucket[t] = compute_risk_for_bucket(all_bucket_tx, bucket_size)
+    input_memory.clear_cache()
 
     # Detect clusters
     clusters = detect_clusters(store.risk_by_bucket[t], all_bucket_tx)
@@ -660,6 +679,20 @@ async def get_dashboard(
 
 # --- Natural Language Query ---
 
+
+@router.get("/inputs/history")
+async def get_inputs_history(
+    limit: int = Query(30, ge=1, le=200),
+    kind: Optional[str] = Query(None, description="Optional filter: nlq.parse or agent.investigate"),
+    include_input: bool = Query(True, description="Include original input payload"),
+) -> dict:
+    entries = input_memory.recent_inputs(limit=limit, kind=kind)
+    if not include_input:
+        for entry in entries:
+            entry.pop("input", None)
+    return {"entries": entries}
+
+
 class NLQParseRequest(BaseModel):
     query: str
     bucket: int
@@ -672,9 +705,26 @@ async def nlq_parse(req: NLQParseRequest) -> dict:
             status_code=400,
             detail=f"Bucket t={req.bucket} out of range [0, {store.n_buckets - 1}]",
         )
-    parsed = parse_query(req.query)
+    normalized_query = _normalize_query(req.query)
+    cache_payload = {
+        "dataset": _dataset_stamp(),
+        "query": normalized_query,
+        "bucket": req.bucket,
+    }
+    cached = input_memory.get_cached("nlq.parse", cache_payload)
+    if cached is not None:
+        input_memory.record_input(
+            kind="nlq.parse",
+            payload={"query": normalized_query, "bucket": req.bucket},
+            bucket=req.bucket,
+            cache_hit=True,
+            meta={"source": "cache"},
+        )
+        return cached
+
+    parsed = parse_query(normalized_query)
     result = execute_intent(parsed["intent"], parsed.get("params", {}), req.bucket)
-    return {
+    response = {
         "intent": parsed["intent"],
         "params": parsed.get("params", {}),
         "interpretation": parsed.get("interpretation", ""),
@@ -682,6 +732,18 @@ async def nlq_parse(req: NLQParseRequest) -> dict:
         "edges": result["edges"],
         "summary": result["summary"],
     }
+    input_memory.set_cached("nlq.parse", cache_payload, response)
+    input_memory.record_input(
+        kind="nlq.parse",
+        payload={"query": normalized_query, "bucket": req.bucket},
+        bucket=req.bucket,
+        cache_hit=False,
+        meta={
+            "intent": parsed.get("intent"),
+            "matched_entities": len(result.get("entity_ids", [])),
+        },
+    )
+    return response
 
 
 # --- Multi-Agent Investigation ---
@@ -699,16 +761,78 @@ async def agent_investigate(req: AgentInvestigateRequest) -> dict:
             detail=f"Bucket t={req.bucket} out of range [0, {store.n_buckets - 1}]",
         )
 
+    normalized_query = _normalize_query(req.query)
+    cache_payload = {
+        "dataset": _dataset_stamp(),
+        "query": normalized_query,
+        "bucket": req.bucket,
+        "include_sar": bool(req.include_sar),
+        "max_targets": int(req.max_targets),
+        "profile": req.profile,
+    }
+    cached_result = input_memory.get_cached("agent.investigate", cache_payload)
+    if cached_result is not None:
+        materialized = supervisor.materialize_cached_result(
+            cached_result=cached_result,
+            query=normalized_query,
+            bucket=req.bucket,
+            include_sar=req.include_sar,
+            max_targets=req.max_targets,
+            profile=req.profile,
+        )
+        input_memory.record_input(
+            kind="agent.investigate",
+            payload={
+                "query": normalized_query,
+                "bucket": req.bucket,
+                "include_sar": req.include_sar,
+                "max_targets": req.max_targets,
+                "profile": req.profile,
+            },
+            bucket=req.bucket,
+            cache_hit=True,
+            meta={"source": "cache", "profile": req.profile},
+        )
+        return materialized
+
     try:
-        return await supervisor.run(
-            query=req.query,
+        result = await supervisor.run(
+            query=normalized_query,
             bucket=req.bucket,
             include_sar=req.include_sar,
             max_targets=req.max_targets,
             profile=req.profile,
             broadcast_fn=manager.broadcast,
         )
+        input_memory.set_cached("agent.investigate", cache_payload, result)
+        input_memory.record_input(
+            kind="agent.investigate",
+            payload={
+                "query": normalized_query,
+                "bucket": req.bucket,
+                "include_sar": req.include_sar,
+                "max_targets": req.max_targets,
+                "profile": req.profile,
+            },
+            bucket=req.bucket,
+            cache_hit=False,
+            meta={"run_id": result.get("run_id"), "profile": req.profile},
+        )
+        return result
     except Exception as e:
+        input_memory.record_input(
+            kind="agent.investigate",
+            payload={
+                "query": normalized_query,
+                "bucket": req.bucket,
+                "include_sar": req.include_sar,
+                "max_targets": req.max_targets,
+                "profile": req.profile,
+            },
+            bucket=req.bucket,
+            cache_hit=False,
+            meta={"error": str(e)},
+        )
         raise HTTPException(status_code=500, detail=f"Agent investigation failed: {e}")
 
 

@@ -1,17 +1,17 @@
-from contextlib import asynccontextmanager
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import DATA_PATH
+from app.data_loader import store
 from app.main import app
 
 
 @pytest.fixture
 async def client():
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+    store.load(DATA_PATH)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
 
 
 @pytest.mark.anyio

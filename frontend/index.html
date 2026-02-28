@@ -8,6 +8,28 @@
   <body>
     <canvas id="scene-canvas"></canvas>
 
+    <!-- Upload modal -->
+    <div id="upload-modal">
+      <div id="upload-content">
+        <div class="upload-title">ANGELA</div>
+        <div class="upload-subtitle">Anomaly Network Graph for Explainable Laundering Analysis</div>
+        <div id="upload-dropzone">
+          <div class="dropzone-icon">CSV</div>
+          <p>Drag &amp; drop transaction CSV<br/>or click to browse</p>
+          <input type="file" id="upload-file" accept=".csv" hidden />
+        </div>
+        <div id="upload-error"></div>
+        <div id="upload-spinner">Processing...</div>
+        <div class="upload-divider">
+          <span>or</span>
+        </div>
+        <button id="load-sample-btn">Load Sample Data</button>
+      </div>
+    </div>
+
+    <!-- Re-upload button -->
+    <button id="reupload-btn" title="Upload new data">UPLOAD</button>
+
     <!-- Time slider + k-hop control -->
     <div id="time-controls">
       <span id="time-label">Bucket 0</span>

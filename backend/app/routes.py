@@ -3,13 +3,15 @@ import random
 from collections import deque
 from enum import Enum
 
-from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 
 from .ai.service import generate_entity_summary
 from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
+from .config import DATA_PATH
+from .csv_processor import process_csv
 from .data_loader import store
 from .models import (
     EntityDetailOut,
@@ -22,6 +24,59 @@ from .risk.scoring import compute_risk_for_bucket
 from .ws import manager
 
 router = APIRouter()
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+# --- Status + Upload ---
+
+@router.get("/status")
+async def get_status() -> dict:
+    return {
+        "loaded": store.is_loaded,
+        "n_entities": len(store.entities),
+        "n_transactions": len(store.transactions),
+        "n_buckets": store.n_buckets,
+    }
+
+
+@router.post("/upload")
+async def upload_csv(file: UploadFile) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+
+    try:
+        snapshot = process_csv(contents, filename=file.filename)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    store.load_from_dict(snapshot)
+
+    return {
+        "status": "ok",
+        "n_entities": len(store.entities),
+        "n_transactions": len(store.transactions),
+        "n_buckets": store.n_buckets,
+    }
+
+
+@router.post("/load-sample")
+async def load_sample() -> dict:
+    if not DATA_PATH.exists():
+        raise HTTPException(status_code=404, detail="Sample data not found on server")
+
+    store.load(DATA_PATH)
+
+    return {
+        "status": "ok",
+        "n_entities": len(store.entities),
+        "n_transactions": len(store.transactions),
+        "n_buckets": store.n_buckets,
+    }
 
 
 @router.get("/snapshot", response_model=SnapshotOut)

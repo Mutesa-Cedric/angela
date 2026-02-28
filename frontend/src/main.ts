@@ -3,7 +3,8 @@ import { initScene } from "./scene";
 import { NodeLayer } from "./graph/NodeLayer";
 import { EdgeLayer } from "./graph/EdgeLayer";
 import { AssetLayer } from "./graph/AssetLayer";
-import { getSnapshot, getEntity, getNeighbors, getAIExplanation } from "./api/client";
+import { getSnapshot, getEntity, getNeighbors, getAIExplanation, getStatus } from "./api/client";
+import * as upload from "./ui/upload";
 import * as slider from "./ui/slider";
 import * as panel from "./ui/panel";
 import * as camera from "./ui/camera";
@@ -249,17 +250,59 @@ demo.init({
   focusEntity: (id) => camera.focusEntity(ctx, nodeLayer, id),
 });
 
+// --- Re-upload button ---
+
+const reuploadBtn = document.getElementById("reupload-btn") as HTMLButtonElement;
+reuploadBtn.addEventListener("click", () => {
+  upload.show();
+  reuploadBtn.style.display = "none";
+});
+
 // --- Init ---
 
-async function init(): Promise<void> {
+async function startGraph(): Promise<void> {
   const snapshot = await getSnapshot(0);
   slider.init(snapshot.meta.n_buckets, 0);
   currentSnapshot = snapshot;
   nodeLayer.update(snapshot.nodes);
   stats.updateCounts(snapshot.nodes.length, snapshot.edges.length);
 
+  // Show graph UI
+  reuploadBtn.style.display = "block";
+  document.getElementById("time-controls")!.style.display = "flex";
+  document.getElementById("legend")!.style.display = "block";
+  document.getElementById("camera-presets")!.style.display = "flex";
+  document.getElementById("stats-overlay")!.style.display = "flex";
+  document.getElementById("demo-btn")!.style.display = "block";
+
   // Connect WebSocket
   wsClient.connect();
+}
+
+upload.onLoaded(() => {
+  startGraph().catch(console.error);
+});
+
+async function init(): Promise<void> {
+  // Hide graph UI initially
+  document.getElementById("time-controls")!.style.display = "none";
+  document.getElementById("legend")!.style.display = "none";
+  document.getElementById("camera-presets")!.style.display = "none";
+  document.getElementById("stats-overlay")!.style.display = "none";
+  document.getElementById("demo-btn")!.style.display = "none";
+
+  try {
+    const status = await getStatus();
+    if (status.loaded) {
+      upload.hide();
+      await startGraph();
+    } else {
+      upload.show();
+    }
+  } catch {
+    // Backend not ready or status endpoint missing — show upload modal
+    upload.show();
+  }
 }
 
 init().catch(console.error);

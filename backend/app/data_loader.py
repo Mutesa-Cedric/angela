@@ -26,6 +26,10 @@ class DataStore:
         # Risk scores per bucket: bucket -> entity_id -> {risk_score, reasons, evidence}
         self.risk_by_bucket: dict[int, dict[str, dict]] = {}
 
+    @property
+    def is_loaded(self) -> bool:
+        return len(self.entities) > 0
+
     def load(self, path: Path) -> None:
         """Load snapshot JSON and build runtime indices."""
         log.info(f"Loading data from {path}...")
@@ -33,12 +37,17 @@ class DataStore:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        self.load_from_dict(data)
+
+    def load_from_dict(self, data: dict) -> None:
+        """Load snapshot from a dict and build runtime indices."""
         self.metadata = data["metadata"]
         self.entities = data["entities"]
         self.transactions = data["transactions"]
         self.bucket_index = data.get("bucket_index", {})
         self.entity_activity = data.get("entity_activity", {})
         self.n_buckets = self.metadata.get("n_buckets", 0)
+        self.risk_by_bucket = {}
 
         self._build_indices()
         self._compute_risk()

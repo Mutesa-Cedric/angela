@@ -7,30 +7,25 @@ DATA_DIR=$2
 LOGS_DIR=$3
 HOST_PORT=$4
 ENV_FILE=$5
+CONTAINER_NAME="angela-api"
 
-# Backend branch uses docker-compose with PostgreSQL
 cd "$PROJECT_DIR"
-git pull origin backend
+git pull origin main
+cd backend
 
 mkdir -p "$DATA_DIR"
 mkdir -p "$LOGS_DIR"
 
-# Export for docker-compose.yml substitution
-export ANGELA_DATA_DIR="${DATA_DIR}"
-export ANGELA_LOGS_DIR="${LOGS_DIR}"
-export ANGELA_HOST_PORT="${HOST_PORT:-3000}"
+docker build -t "$CONTAINER_NAME" .
 
-# Copy env file if provided (skip if same file)
-if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
-    if ! cmp -s "$ENV_FILE" .env 2>/dev/null; then
-        cp "$ENV_FILE" .env
-    fi
-fi
+docker stop "$CONTAINER_NAME" || true
+docker rm "$CONTAINER_NAME" || true
 
-# Build and deploy with docker-compose (includes postgres, backend, frontend)
-docker-compose down || true
-docker-compose build
-docker-compose up -d
-
-# Cleanup old images
-docker image prune -f
+docker run -d \
+  -p "$HOST_PORT":8000 \
+  -v "$DATA_DIR":/app/data \
+  -v "$LOGS_DIR":/app/logs \
+  --env-file "$ENV_FILE" \
+  --name "$CONTAINER_NAME" \
+  --restart unless-stopped \
+  "$CONTAINER_NAME"

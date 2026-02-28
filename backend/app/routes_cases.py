@@ -1,4 +1,4 @@
-"""API routes for case management and FinCEN SAR filings.
+"""API routes for case management, FinCEN SAR filings, and HK JFIU STR filings.
 
 All routes are mounted under /cases and are purely additive — they do not
 modify or shadow any existing endpoints.
@@ -36,6 +36,18 @@ from .sar.models import (
     SARValidationResult,
 )
 from .sar.xml_generator import generate_fincen_xml, validate_for_xml
+from .sar.hk_str_models import (
+    STRFilingCreate,
+    STRFilingOut,
+    STRFilingUpdate,
+    STRReportingInstitution,
+    STRSubject,
+    STRSuspiciousActivity,
+    STRGroundsForSuspicion,
+    STRAdditionalInfo,
+    STRValidationResult,
+)
+from .sar.hk_str_xml_generator import generate_hk_str_xml, validate_for_str_xml
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +75,25 @@ async def get_instrument_type_codes() -> dict:
 async def get_product_type_codes() -> dict:
     from .sar.models import PRODUCT_TYPE_LABELS
     return {"product_types": PRODUCT_TYPE_LABELS}
+
+
+@router.get("/reference/hk-suspicious-indicators", include_in_schema=True)
+async def get_hk_suspicious_indicators() -> dict:
+    """Return HKMA suspicious activity indicator codes and labels."""
+    from .sar.hk_str_models import HK_SUSPICIOUS_INDICATORS
+    return {"indicators": HK_SUSPICIOUS_INDICATORS}
+
+
+@router.get("/reference/hk-institution-types", include_in_schema=True)
+async def get_hk_institution_types() -> dict:
+    from .sar.hk_str_models import HK_INSTITUTION_TYPE_LABELS
+    return {"institution_types": HK_INSTITUTION_TYPE_LABELS}
+
+
+@router.get("/reference/hk-transaction-types", include_in_schema=True)
+async def get_hk_transaction_types() -> dict:
+    from .sar.hk_str_models import HK_TRANSACTION_TYPE_LABELS
+    return {"transaction_types": HK_TRANSACTION_TYPE_LABELS}
 
 
 # ---------------------------------------------------------------------------
@@ -534,3 +565,332 @@ async def generate_xml_for_filing(
     return _sar_to_out(sar)
 
 
+# ===========================================================================
+# HK JFIU STR Filing Endpoints
+# ===========================================================================
+
+def _str_to_out(sar: SARFiling) -> STRFilingOut:
+    return STRFilingOut(
+        id=str(sar.id),
+        case_id=str(sar.case_id),
+        entity_id=sar.entity_id,
+        bucket=sar.bucket,
+        status=sar.status,
+        report_type=sar.report_type,
+        reporting_institution=sar.reporting_institution or {},
+        subject=sar.subject or {},
+        suspicious_activity=sar.suspicious_activity or {},
+        grounds_for_suspicion=sar.grounds_for_suspicion or {},
+        additional_info=sar.additional_info or {},
+        narrative=sar.narrative,
+        narrative_payload=sar.narrative_payload or {},
+        str_xml=sar.str_xml,
+        risk_score=sar.risk_score,
+        risk_evidence=sar.risk_evidence or {},
+        created_at=sar.created_at.isoformat(),
+        updated_at=sar.updated_at.isoformat(),
+    )
+
+
+@router.post("/{case_id}/str", status_code=201)
+async def create_str_filing(
+    case_id: UUID,
+    body: STRFilingCreate,
+    session: AsyncSession = Depends(get_session),
+) -> STRFilingOut:
+    """Create a new HK JFIU STR filing within a case."""
+    await _get_case_or_404(session, case_id)
+
+    risk_score = None
+    risk_evidence: dict = {}
+    if store.is_loaded:
+        entity = store.get_entity(body.entity_id)
+        if entity and body.bucket < store.n_buckets:
+            risk_data = store.get_entity_risk(body.bucket, body.entity_id)
+            risk_score = risk_data.get("risk_score")
+            risk_evidence = {
+                "reasons": risk_data.get("reasons", []),
+                "evidence": risk_data.get("evidence", {}),
+            }
+
+    filing = SARFiling(
+        case_id=case_id,
+        entity_id=body.entity_id,
+        bucket=body.bucket,
+        report_type="hk_str",
+        filing_type="initial",
+        reporting_institution=body.reporting_institution.model_dump(mode="json"),
+        subject=body.subject.model_dump(mode="json"),
+        suspicious_activity=body.suspicious_activity.model_dump(mode="json"),
+        grounds_for_suspicion=body.grounds_for_suspicion.model_dump(mode="json"),
+        additional_info=body.additional_info.model_dump(mode="json"),
+        risk_score=risk_score,
+        risk_evidence=risk_evidence,
+    )
+    session.add(filing)
+    await session.flush()
+    await session.refresh(filing)
+
+    log.info("Created HK STR filing %s for entity %s in case %s", filing.id, filing.entity_id, case_id)
+    return _str_to_out(filing)
+
+
+@router.get("/{case_id}/str")
+async def list_str_filings(
+    case_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """List all HK STR filings for a case."""
+    await _get_case_or_404(session, case_id)
+    result = await session.execute(
+        select(SARFiling)
+        .where(SARFiling.case_id == case_id, SARFiling.report_type == "hk_str")
+        .order_by(SARFiling.created_at.desc())
+    )
+    filings = result.scalars().all()
+    return {"filings": [_str_to_out(f) for f in filings]}
+
+
+@router.get("/{case_id}/str/{str_id}")
+async def get_str_filing(
+    case_id: UUID,
+    str_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> STRFilingOut:
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+    return _str_to_out(filing)
+
+
+@router.patch("/{case_id}/str/{str_id}")
+async def update_str_filing(
+    case_id: UUID,
+    str_id: UUID,
+    body: STRFilingUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> STRFilingOut:
+    """Update HK STR filing fields (partial)."""
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+
+    if body.status is not None:
+        filing.status = body.status
+    if body.reporting_institution is not None:
+        filing.reporting_institution = body.reporting_institution.model_dump(mode="json")
+    if body.subject is not None:
+        filing.subject = body.subject.model_dump(mode="json")
+    if body.suspicious_activity is not None:
+        filing.suspicious_activity = body.suspicious_activity.model_dump(mode="json")
+    if body.grounds_for_suspicion is not None:
+        filing.grounds_for_suspicion = body.grounds_for_suspicion.model_dump(mode="json")
+    if body.additional_info is not None:
+        filing.additional_info = body.additional_info.model_dump(mode="json")
+
+    filing.str_xml = None
+
+    await session.flush()
+    await session.refresh(filing)
+    return _str_to_out(filing)
+
+
+@router.delete("/{case_id}/str/{str_id}", status_code=204)
+async def delete_str_filing(
+    case_id: UUID,
+    str_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+    await session.delete(filing)
+
+
+@router.post("/{case_id}/str/{str_id}/generate-narrative")
+async def generate_narrative_for_str(
+    case_id: UUID,
+    str_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> STRFilingOut:
+    """Generate an AI narrative for the HK STR filing."""
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+
+    if not store.is_loaded:
+        raise HTTPException(status_code=400, detail="Load case data first via POST /cases/{case_id}/load")
+
+    entity = store.get_entity(filing.entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=f"Entity '{filing.entity_id}' not found in loaded dataset")
+
+    bucket = filing.bucket
+    if bucket < 0 or bucket >= store.n_buckets:
+        raise HTTPException(status_code=400, detail=f"Bucket {bucket} out of range")
+
+    risk = store.get_entity_risk(bucket, filing.entity_id)
+    activity = store.get_entity_activity(bucket, filing.entity_id)
+
+    bucket_tx = store.get_bucket_transactions(bucket)
+    connected_ids: set[str] = set()
+    for tx in bucket_tx:
+        if tx["from_id"] == filing.entity_id and tx["to_id"] != filing.entity_id:
+            connected_ids.add(tx["to_id"])
+        elif tx["to_id"] == filing.entity_id and tx["from_id"] != filing.entity_id:
+            connected_ids.add(tx["from_id"])
+
+    connected_entities = []
+    for cid in sorted(connected_ids)[:10]:
+        cr = store.get_entity_risk(bucket, cid)
+        connected_entities.append({"id": cid, "risk_score": cr["risk_score"]})
+
+    payload = build_sar_payload(
+        entity_id=filing.entity_id,
+        entity_type=entity.get("type", "account"),
+        bank=entity.get("bank", "Unknown"),
+        jurisdiction_bucket=entity["jurisdiction_bucket"],
+        risk_score=risk["risk_score"],
+        reasons=risk["reasons"],
+        evidence=risk["evidence"],
+        activity=activity,
+        connected_entities=connected_entities,
+        bucket=bucket,
+        bucket_size_seconds=store.metadata.get("bucket_size_seconds", 86400),
+    )
+
+    narrative = await asyncio.to_thread(
+        generate_sar_narrative,
+        entity_id=filing.entity_id,
+        payload_key=json.dumps(payload, sort_keys=True, default=str),
+    )
+
+    filing.narrative = narrative
+    filing.narrative_payload = payload
+    filing.risk_score = risk["risk_score"]
+    filing.risk_evidence = {"reasons": risk["reasons"], "evidence": risk["evidence"]}
+
+    # Also set narrative into additional_info for the STR form
+    addl = filing.additional_info or {}
+    addl["narrative"] = narrative
+    filing.additional_info = addl
+
+    await session.flush()
+    await session.refresh(filing)
+
+    log.info("Generated narrative for HK STR %s (entity %s)", filing.id, filing.entity_id)
+    return _str_to_out(filing)
+
+
+@router.get("/{case_id}/str/{str_id}/validate")
+async def validate_str_filing(
+    case_id: UUID,
+    str_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> STRValidationResult:
+    """Validate whether the STR filing has sufficient data for XML generation."""
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+
+    return validate_for_str_xml(
+        reporting_institution=STRReportingInstitution(**(filing.reporting_institution or {})),
+        subject=STRSubject(**(filing.subject or {})),
+        suspicious_activity=STRSuspiciousActivity(**(filing.suspicious_activity or {})),
+        grounds=STRGroundsForSuspicion(**(filing.grounds_for_suspicion or {})),
+        additional_info=STRAdditionalInfo(**(filing.additional_info or {})),
+    )
+
+
+@router.post("/{case_id}/str/{str_id}/generate-xml")
+async def generate_xml_for_str(
+    case_id: UUID,
+    str_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> STRFilingOut:
+    """Generate HK JFIU STR XML for STREAMS 2 electronic filing.
+
+    The generated XML mirrors the JFIU proforma structure and includes an
+    AI-disclaimer.  The MLRO MUST review all fields and submit through
+    STREAMS 2 after validation.
+    """
+    result = await session.execute(
+        select(SARFiling).where(
+            SARFiling.id == str_id,
+            SARFiling.case_id == case_id,
+            SARFiling.report_type == "hk_str",
+        )
+    )
+    filing = result.scalar_one_or_none()
+    if filing is None:
+        raise HTTPException(status_code=404, detail=f"STR filing '{str_id}' not found")
+
+    validation = validate_for_str_xml(
+        reporting_institution=STRReportingInstitution(**(filing.reporting_institution or {})),
+        subject=STRSubject(**(filing.subject or {})),
+        suspicious_activity=STRSuspiciousActivity(**(filing.suspicious_activity or {})),
+        grounds=STRGroundsForSuspicion(**(filing.grounds_for_suspicion or {})),
+        additional_info=STRAdditionalInfo(**(filing.additional_info or {})),
+    )
+    if not validation.ready:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "STR filing is not ready for XML generation",
+                "errors": validation.errors,
+                "warnings": validation.warnings,
+            },
+        )
+
+    xml_str = generate_hk_str_xml(
+        reporting_institution=filing.reporting_institution or {},
+        subject=filing.subject or {},
+        suspicious_activity=filing.suspicious_activity or {},
+        grounds_for_suspicion=filing.grounds_for_suspicion or {},
+        additional_info=filing.additional_info or {},
+        filing_id=str(filing.id),
+    )
+
+    filing.str_xml = xml_str
+    filing.status = "xml_generated"
+
+    await session.flush()
+    await session.refresh(filing)
+
+    log.info("Generated HK STR XML for filing %s", filing.id)
+    return _str_to_out(filing)

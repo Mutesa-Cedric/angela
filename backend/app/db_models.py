@@ -50,7 +50,7 @@ class Case(Base):
 
 
 class SARFiling(Base):
-    """Stores a complete FinCEN SAR filing with all required XML fields."""
+    """Stores a complete FinCEN SAR or HK JFIU STR filing."""
 
     __tablename__ = "sar_filings"
 
@@ -64,6 +64,9 @@ class SARFiling(Base):
     bucket: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="draft"
+    )
+    report_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="fincen_sar"
     )
 
     # FinCEN filing info
@@ -95,14 +98,26 @@ class SARFiling(Base):
         JSONB, nullable=False, default=dict
     )
 
+    # HK STR-specific fields (Part A reporting institution, Part D grounds)
+    reporting_institution: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    grounds_for_suspicion: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+    additional_info: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
+
     # Part V - Narrative
     narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
     narrative_payload: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict
     )
 
-    # Generated XML output
+    # Generated XML output (FinCEN SAR or HK STR)
     fincen_xml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    str_xml: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Auto-populated risk context from analysis engine
     risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -123,4 +138,5 @@ class SARFiling(Base):
         Index("ix_sar_filings_case_id", "case_id"),
         Index("ix_sar_filings_entity_id", "entity_id"),
         Index("ix_sar_filings_status", "status"),
+        Index("ix_sar_filings_report_type", "report_type"),
     )

@@ -1,5 +1,53 @@
 # Backend Changelog
 
+## v0.2.1 — Hong Kong JFIU STR Filing Support
+
+### Overview
+
+Adds Hong Kong Suspicious Transaction Report (STR) filing alongside the
+existing US FinCEN SAR format.  Covers the full JFIU STR Proforma
+(Parts A-E) with structured XML output for STREAMS 2 electronic submission.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `sar/hk_str_models.py` | Pydantic models for all HK STR fields (Parts A-E), HK institution types, HKMA suspicious indicators, transaction types |
+| `sar/hk_str_xml_generator.py` | XML generator mirroring JFIU proforma structure for STREAMS 2 |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `db_models.py` | Added `report_type`, `reporting_institution`, `grounds_for_suspicion`, `additional_info`, `str_xml` columns to SARFiling |
+| `routes_cases.py` | Added HK STR CRUD + narrative + validation + XML endpoints under `/cases/{id}/str`. Added HK reference data endpoints. |
+
+### New API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/cases/{id}/str` | Create HK STR filing |
+| `GET` | `/cases/{id}/str` | List HK STR filings for case |
+| `GET` | `/cases/{id}/str/{str_id}` | Get STR filing detail |
+| `PATCH` | `/cases/{id}/str/{str_id}` | Update STR filing fields |
+| `DELETE` | `/cases/{id}/str/{str_id}` | Delete STR filing |
+| `POST` | `/cases/{id}/str/{str_id}/generate-narrative` | AI-generate narrative |
+| `GET` | `/cases/{id}/str/{str_id}/validate` | Validate readiness for XML |
+| `POST` | `/cases/{id}/str/{str_id}/generate-xml` | Generate JFIU STR XML |
+| `GET` | `/cases/reference/hk-suspicious-indicators` | HKMA indicator codes |
+| `GET` | `/cases/reference/hk-institution-types` | HK institution type codes |
+| `GET` | `/cases/reference/hk-transaction-types` | HK transaction type codes |
+
+### HK STR Form Structure
+
+- **Part A** — Reporting Institution (name, type, regulator, license, contact)
+- **Part B** — Subject of Suspicion (individual/corporate, HKID, accounts, relationship)
+- **Part C** — Suspicious Transaction Details (dates, amounts in HKD, individual transactions)
+- **Part D** — Grounds for Suspicion (indicators, customer explanation, analysis, account freeze status)
+- **Part E** — Additional Information / Narrative
+
+---
+
 ## v0.2.0 — Case Persistence & FinCEN SAR E-Filing
 
 ### Overview

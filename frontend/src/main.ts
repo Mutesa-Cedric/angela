@@ -35,6 +35,47 @@ const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
 if (!canvas) throw new Error("Canvas element #scene-canvas not found");
 
 const ctx = initScene(canvas);
+const baseBloomStrength = ctx.bloomPass.strength;
+const baseBloomRadius = ctx.bloomPass.radius;
+const baseBloomThreshold = ctx.bloomPass.threshold;
+const baseExposure = ctx.renderer.toneMappingExposure;
+const PITCH_MODE_STORAGE_KEY = "angela.pitch_mode";
+let pitchModeEnabled = false;
+
+function applyPitchMode(enabled: boolean): void {
+  pitchModeEnabled = enabled;
+  document.body.classList.toggle("pitch-mode", enabled);
+
+  if (enabled) {
+    ctx.bloomPass.strength = baseBloomStrength * 1.5;
+    ctx.bloomPass.radius = Math.min(1.2, baseBloomRadius + 0.2);
+    ctx.bloomPass.threshold = Math.max(0.65, baseBloomThreshold - 0.08);
+    ctx.renderer.toneMappingExposure = baseExposure * 1.08;
+  } else {
+    ctx.bloomPass.strength = baseBloomStrength;
+    ctx.bloomPass.radius = baseBloomRadius;
+    ctx.bloomPass.threshold = baseBloomThreshold;
+    ctx.renderer.toneMappingExposure = baseExposure;
+  }
+
+  const pitchBtn = document.getElementById("pitch-mode-btn") as HTMLButtonElement | null;
+  if (pitchBtn) {
+    pitchBtn.classList.toggle("active", enabled);
+    pitchBtn.textContent = enabled ? "PITCH ON" : "PITCH";
+    pitchBtn.title = enabled ? "Disable cinematic pitch mode (Shift+P)" : "Enable cinematic pitch mode (Shift+P)";
+  }
+
+  try {
+    localStorage.setItem(PITCH_MODE_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // ignore restricted localStorage environments
+  }
+}
+
+function togglePitchMode(): void {
+  applyPitchMode(!pitchModeEnabled);
+}
+
 const nodeLayer = new NodeLayer(5000);
 ctx.scene.add(nodeLayer.group);
 const edgeLayer = new EdgeLayer(ctx.scene);
@@ -377,6 +418,16 @@ dashboard.onToggle((open) => {
 dashboardBtn.addEventListener("click", () => {
   if (!currentSnapshot) return;
   dashboard.toggle(currentSnapshot.meta.t);
+});
+
+const pitchModeBtn = document.getElementById("pitch-mode-btn") as HTMLButtonElement;
+pitchModeBtn.addEventListener("click", () => togglePitchMode());
+
+window.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "p" && e.shiftKey) {
+    e.preventDefault();
+    togglePitchMode();
+  }
 });
 
 // --- NLQ Query Bar ---
@@ -933,6 +984,9 @@ async function init(): Promise<void> {
   document.getElementById("stats-overlay")!.style.display = "none";
   document.getElementById("action-bar")!.style.display = "none";
   document.getElementById("nlq-bar")!.style.display = "none";
+
+  // Pitch mode defaults on for demos; can be toggled off manually.
+  applyPitchMode(true);
 
   try {
     const status = await getStatus();

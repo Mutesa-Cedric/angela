@@ -14,10 +14,53 @@ body {
   color: #e0e0e0;
 }
 
+body {
+  position: relative;
+}
+
+body.pitch-mode::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.46) 100%);
+}
+
+body.pitch-mode::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  background-image:
+    linear-gradient(
+      115deg,
+      rgba(68, 136, 255, 0) 0%,
+      rgba(68, 136, 255, 0.09) 30%,
+      rgba(34, 170, 136, 0.08) 52%,
+      rgba(255, 136, 68, 0.09) 72%,
+      rgba(255, 136, 68, 0) 100%
+    );
+  animation: pitch-sheen 8s linear infinite;
+}
+
+@keyframes pitch-sheen {
+  0% { transform: translateX(-8%); }
+  50% { transform: translateX(8%); }
+  100% { transform: translateX(-8%); }
+}
+
 #scene-canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+body.pitch-mode #scene-canvas {
+  filter: saturate(1.1) contrast(1.08);
 }
 
 /* Time slider */
@@ -882,6 +925,33 @@ body {
   background: rgba(170, 102, 255, 0.3);
   border-color: rgba(170, 102, 255, 0.8);
   color: #cc99ff;
+}
+
+#pitch-mode-btn {
+  background: rgba(255, 82, 82, 0.12);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 82, 82, 0.4);
+  color: #ff8f8f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+#pitch-mode-btn:hover {
+  background: rgba(255, 82, 82, 0.24);
+  border-color: rgba(255, 82, 82, 0.75);
+  color: #ffd0d0;
+}
+
+#pitch-mode-btn.active {
+  color: #ffdede;
+  border-color: rgba(255, 110, 110, 0.85);
+  background: rgba(255, 82, 82, 0.35);
+  box-shadow: 0 0 18px rgba(255, 82, 82, 0.32);
 }
 
 /* ===== Wizard ===== */
@@ -1931,6 +2001,34 @@ body {
 
 #nlq-bar.agent-running #nlq-input {
   border-color: rgba(255, 204, 68, 0.5);
+}
+
+/* ===== Pitch Mode Visual Accents ===== */
+body.pitch-mode #time-controls,
+body.pitch-mode #legend,
+body.pitch-mode #nlq-bar,
+body.pitch-mode #entity-panel,
+body.pitch-mode #sar-panel {
+  box-shadow: 0 0 24px rgba(68, 136, 255, 0.16), 0 0 42px rgba(34, 170, 136, 0.08);
+}
+
+body.pitch-mode #autopilot-btn,
+body.pitch-mode #dashboard-btn,
+body.pitch-mode #pitch-mode-btn {
+  box-shadow: 0 0 14px rgba(68, 136, 255, 0.15);
+}
+
+body.pitch-mode #autopilot-btn.running {
+  box-shadow: 0 0 18px rgba(255, 136, 68, 0.35);
+}
+
+body.pitch-mode #agent-progress-fill {
+  background: linear-gradient(90deg, #6aa3ff 0%, #37c8a1 55%, #ff9f6b 100%);
+}
+
+body.pitch-mode #autopilot-overlay {
+  border-color: rgba(143, 195, 255, 0.62);
+  box-shadow: 0 0 26px rgba(68, 136, 255, 0.25), 0 0 36px rgba(34, 170, 136, 0.18);
 }
 
 /* ===== Counterfactual ===== */

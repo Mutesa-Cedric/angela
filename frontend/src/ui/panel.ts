@@ -3,6 +3,7 @@ import { riskColorCSS } from "../graph/NodeLayer";
 import * as sarPanel from "./sarPanel";
 import { getCounterfactual } from "../api/client";
 import type { CounterfactualResult } from "../api/client";
+import { ENTITY_LINK_EVENT, renderMarkdownInto } from "./markdown";
 
 const panel = document.getElementById("entity-panel") as HTMLDivElement;
 const panelContent = document.getElementById("panel-content") as HTMLDivElement;
@@ -86,7 +87,7 @@ export function show(entity: EntityDetail, neighborhood?: Neighborhood): void {
     ${connectedHTML}
     <div class="ai-section">
       <h3>AI Analysis</h3>
-      <div id="ai-summary" class="ai-summary muted">Loading AI summary...</div>
+      <div id="ai-summary" class="ai-summary markdown-content muted">Loading AI summary...</div>
     </div>
     <button id="panel-sar-btn" class="panel-sar-btn">Generate SAR Report</button>
     ${entity.risk_score > 0.1 ? '<button id="panel-cf-btn" class="panel-cf-btn">What If? (Counterfactual)</button>' : ""}
@@ -260,7 +261,7 @@ function buildConnectedEntities(neighborhood?: Neighborhood): string {
 export function setAISummary(summary: string): void {
   const el = document.getElementById("ai-summary");
   if (el) {
-    el.textContent = summary;
+    renderMarkdownInto(el, summary);
     el.classList.remove("muted");
   }
 }
@@ -296,6 +297,7 @@ async function runCounterfactual(): Promise<void> {
     const reasonTags = Object.entries(byReason)
       .map(([r, n]) => `<span class="cf-reason-tag">${n} ${r}</span>`)
       .join(" ");
+    const topEdges = result.removed_edges.slice(0, 8);
 
     cfResult.innerHTML = `
       <h3>Counterfactual Analysis</h3>
@@ -317,8 +319,33 @@ async function runCounterfactual(): Promise<void> {
         <div class="cf-removed-info">
           ${result.delta.tx_count_removed} suspicious edges removed: ${reasonTags}
         </div>
+        <div id="cf-summary" class="cf-summary markdown-content"></div>
+        ${topEdges.length > 0 ? `
+          <div class="cf-edge-list">
+            <h4>Top Removed Edges (click entity to inspect)</h4>
+            ${topEdges.map((edge) => `
+              <div class="cf-edge-row">
+                <button class="cf-entity-link" data-entity-id="${edge.from_id}">${edge.from_id}</button>
+                <span class="cf-edge-arrow">→</span>
+                <button class="cf-entity-link" data-entity-id="${edge.to_id}">${edge.to_id}</button>
+                <span class="cf-edge-meta">$${edge.amount.toLocaleString()} · ${edge.reason}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
       </div>
     `;
+    const cfSummaryEl = document.getElementById("cf-summary");
+    if (cfSummaryEl) {
+      renderMarkdownInto(cfSummaryEl, buildCounterfactualSummaryMarkdown(result, byReason));
+    }
+    for (const btn of Array.from(cfResult.querySelectorAll<HTMLButtonElement>(".cf-entity-link"))) {
+      btn.addEventListener("click", () => {
+        const entityId = btn.dataset.entityId;
+        if (!entityId) return;
+        window.dispatchEvent(new CustomEvent(ENTITY_LINK_EVENT, { detail: { entityId } }));
+      });
+    }
     cfResult.style.display = "block";
 
     if (cfBtn) {
@@ -356,4 +383,29 @@ export function hide(): void {
 export function showLoading(): void {
   panel.classList.add("open");
   panelContent.innerHTML = '<div class="muted">Loading...</div>';
+}
+
+function buildCounterfactualSummaryMarkdown(
+  result: CounterfactualResult,
+  byReason: Record<string, number>,
+): string {
+  const actualPct = (result.original.risk_score * 100).toFixed(0);
+  const cfPct = (result.counterfactual.risk_score * 100).toFixed(0);
+  const deltaAbsPct = Math.abs(result.delta.risk_score * 100).toFixed(0);
+  const direction = result.delta.risk_score <= 0 ? "decreases" : "increases";
+  const primaryReasons = Object.entries(byReason)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([reason, count]) => `${reason} (${count})`)
+    .join(", ");
+
+  return [
+    `**Impact:** Risk **${direction} ${deltaAbsPct}%** when suspicious edges are removed.`,
+    `- Actual risk: **${actualPct}%**`,
+    `- Counterfactual risk: **${cfPct}%**`,
+    `- Removed edges: **${result.delta.tx_count_removed}**`,
+    `- Primary drivers: ${primaryReasons || "N/A"}`,
+    "",
+    "Use the edge list below to inspect the most influential counterparties.",
+  ].join("\n");
 }

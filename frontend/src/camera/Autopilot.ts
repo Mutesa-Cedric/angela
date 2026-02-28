@@ -3,6 +3,7 @@ import type { SceneContext } from "../scene";
 import type { NodeLayer } from "../graph/NodeLayer";
 import type { AutopilotTarget } from "../types";
 import { getAutopilotTargets } from "../api/client";
+import { renderMarkdownInto } from "../ui/markdown";
 
 // ── Keyframe types ─────────────────────────────────────────────────────
 
@@ -23,9 +24,14 @@ const overlayEl = document.createElement("div");
 overlayEl.id = "autopilot-overlay";
 overlayEl.style.display = "none";
 document.body.appendChild(overlayEl);
+let overlayHideTimer: number | null = null;
 
-function showOverlay(text: string): void {
-  overlayEl.textContent = text;
+function showOverlay(markdown: string): void {
+  if (overlayHideTimer !== null) {
+    window.clearTimeout(overlayHideTimer);
+    overlayHideTimer = null;
+  }
+  renderMarkdownInto(overlayEl, markdown);
   overlayEl.style.display = "block";
   overlayEl.classList.remove("fade-out");
   overlayEl.classList.add("fade-in");
@@ -34,8 +40,12 @@ function showOverlay(text: string): void {
 function hideOverlay(): void {
   overlayEl.classList.remove("fade-in");
   overlayEl.classList.add("fade-out");
-  setTimeout(() => {
+  if (overlayHideTimer !== null) {
+    window.clearTimeout(overlayHideTimer);
+  }
+  overlayHideTimer = window.setTimeout(() => {
     overlayEl.style.display = "none";
+    overlayHideTimer = null;
   }, 400);
 }
 
@@ -106,9 +116,11 @@ export class Autopilot {
       const { targets } = await getAutopilotTargets(bucket);
       if (targets.length === 0) {
         console.warn("Autopilot: no targets found for bucket", bucket);
+        showOverlay(`### AI Autopilot\nNo high-priority targets were found for bucket **${bucket}**.`);
+        setTimeout(() => hideOverlay(), 1800);
         return;
       }
-      this.keyframes = this.planKeyframes(targets);
+      this.keyframes = this.planKeyframes(targets, bucket);
       this.currentKeyframe = 0;
       this.keyframeProgress = 0;
       this.captureStart();
@@ -118,6 +130,8 @@ export class Autopilot {
       this.ctx.controls.enabled = false;
     } catch (err) {
       console.error("Autopilot: failed to get targets", err);
+      showOverlay("### AI Autopilot\nUnable to retrieve investigation targets right now.");
+      setTimeout(() => hideOverlay(), 2200);
     }
   }
 
@@ -192,7 +206,7 @@ export class Autopilot {
 
   // ── Keyframe planning (cinematic) ───────────────────────────────
 
-  private planKeyframes(targets: AutopilotTarget[]): CameraKeyframe[] {
+  private planKeyframes(targets: AutopilotTarget[], bucket: number): CameraKeyframe[] {
     const keyframes: CameraKeyframe[] = [];
 
     // Find highest-risk target for dramatic emphasis
@@ -204,11 +218,11 @@ export class Autopilot {
       lookAt: new THREE.Vector3(0, 2, 0),
       duration: 3.5,
       easing: "ease-in-out",
-      annotation: "Scanning network for anomalies…",
+      annotation: `### AI Autopilot\nScanning **${targets.length}** investigation targets in bucket **${bucket}**.`,
     });
 
     // 2. Visit each target with settle + hold pattern
-    for (const target of targets) {
+    for (const [idx, target] of targets.entries()) {
       // Higher-risk targets get longer hold times
       const riskMultiplier = target.risk_score >= maxRisk * 0.9 ? 1.4 : 1.0;
 
@@ -222,7 +236,7 @@ export class Autopilot {
           lookAt: new THREE.Vector3(pos.x, pos.y, pos.z),
           duration: 2.5 * riskMultiplier,
           easing: "ease-in-out",
-          annotation: target.label,
+          annotation: `### Target ${idx + 1}/${targets.length}: ${target.label}\n${target.reason}`,
         });
 
         // Settle — close orbit, hold for annotation to land
@@ -231,7 +245,7 @@ export class Autopilot {
           lookAt: new THREE.Vector3(pos.x, pos.y, pos.z),
           duration: 2.0 * riskMultiplier,
           easing: "ease-out",
-          annotation: target.reason,
+          annotation: `AI is focusing on \`${target.entity_ids[0]}\` due to: ${target.reason}`,
         });
 
         // Hold — very slight drift (barely perceptible camera movement)
@@ -266,7 +280,7 @@ export class Autopilot {
           lookAt: centroid.clone(),
           duration: 3.5 * riskMultiplier,
           easing: "ease-in-out",
-          annotation: target.label,
+          annotation: `### Target ${idx + 1}/${targets.length}: ${target.label}\n${target.reason}`,
         });
 
         // Slow cinematic sweep around cluster
@@ -279,7 +293,7 @@ export class Autopilot {
           lookAt: centroid.clone(),
           duration: 3.5 * riskMultiplier,
           easing: "ease-out",
-          annotation: target.reason,
+          annotation: `Inspecting **cluster behavior** to validate AI suspicion pattern.`,
         });
 
         // Hold on cluster
@@ -302,7 +316,7 @@ export class Autopilot {
       lookAt: new THREE.Vector3(0, 2, 0),
       duration: 3.0,
       easing: "ease-in-out",
-      annotation: "Investigation complete",
+      annotation: `### Investigation Complete\nAI reviewed **${targets.length}** targets. Click any entity ID in notes to inspect details.`,
     });
 
     return keyframes;

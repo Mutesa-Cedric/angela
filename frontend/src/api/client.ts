@@ -2,11 +2,27 @@ import type { AutopilotTarget, EntityDetail, Neighborhood, Snapshot } from "../t
 
 const BASE = "/api";
 
-async function fetchJSON<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+function extractErrorMessage(body: unknown, fallback: string): string {
+  if (!body || typeof body !== "object") return fallback;
+  const maybeBody = body as Record<string, unknown>;
+  const detail = maybeBody.detail;
+
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const first = detail[0];
+    if (first && typeof first === "object") {
+      const msg = (first as Record<string, unknown>).msg;
+      if (typeof msg === "string") return msg;
+    }
+  }
+  return fallback;
+}
+
+async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `HTTP ${res.status}`);
+    throw new Error(extractErrorMessage(body, `HTTP ${res.status}`));
   }
   return res.json() as Promise<T>;
 }
@@ -32,6 +48,25 @@ export function getAIExplanation(id: string, t: number): Promise<{ entity_id: st
 
 export function getStatus(): Promise<{ loaded: boolean; n_entities: number; n_transactions: number; n_buckets: number }> {
   return fetchJSON(`${BASE}/status`);
+}
+
+export interface AIWarmupStatus {
+  status: "idle" | "running" | "completed" | "failed" | "disabled";
+  run_id?: string | null;
+  reason?: string | null;
+  bucket?: number;
+  partial?: boolean;
+  progress?: number;
+  max_seconds?: number;
+  entities_total?: number;
+  entities_done?: number;
+  sar_total?: number;
+  sar_done?: number;
+  errors?: string[];
+}
+
+export function getAIWarmupStatus(): Promise<AIWarmupStatus> {
+  return fetchJSON(`${BASE}/ai/warmup/status`);
 }
 
 export async function uploadFile(file: File): Promise<{ status: string; n_entities: number; n_transactions: number; n_buckets: number }> {
@@ -146,17 +181,128 @@ export interface NLQResult {
   summary: string;
 }
 
-export async function queryNLQ(query: string, bucket: number): Promise<NLQResult> {
+export async function queryNLQ(
+  query: string,
+  bucket: number,
+  signal?: AbortSignal,
+): Promise<NLQResult> {
   const res = await fetch(`${BASE}/nlq/parse`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, bucket }),
+    signal,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `NLQ failed: HTTP ${res.status}`);
+    throw new Error(extractErrorMessage(body, `NLQ failed: HTTP ${res.status}`));
   }
   return res.json();
+}
+
+export interface AgentInvestigateRequest {
+  query: string;
+  bucket: number;
+  include_sar: boolean;
+  max_targets: number;
+  profile: "fast" | "balanced" | "deep";
+}
+
+export interface AgentStepEvent {
+  run_id: string;
+  step_index: number;
+  agent: string;
+  detail: string;
+  status: "running" | "completed" | "failed";
+  error?: string;
+}
+
+export interface AgentInvestigateResult {
+  run_id: string;
+  status: "completed" | "failed";
+  query: string;
+  bucket: number;
+  profile: "fast" | "balanced" | "deep";
+  intent: string;
+  params: Record<string, unknown>;
+  interpretation: string;
+  research: {
+    entity_ids: string[];
+    edges?: { from_id: string; to_id: string; amount: number }[];
+    edges_preview?: { from_id: string; to_id: string; amount: number }[];
+    summary: string;
+    total_targets_found: number;
+  };
+  analysis: {
+    top_entity_id: string | null;
+    average_risk: number;
+    high_risk_count: number;
+    detector_counts: Record<string, number>;
+    highlights?: {
+      entity_id: string;
+      risk_score: number;
+      top_reason: string;
+      summary: string;
+    }[];
+  };
+  reporting: {
+    narrative: string;
+    sar?: {
+      entity_id: string;
+      narrative: string;
+    } | null;
+  };
+}
+
+export async function runAgentInvestigation(
+  payload: AgentInvestigateRequest,
+  signal?: AbortSignal,
+): Promise<AgentInvestigateResult> {
+  const res = await fetch(`${BASE}/agent/investigate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(extractErrorMessage(body, `Agent investigate failed: HTTP ${res.status}`));
+  }
+  return res.json();
+}
+
+export function getAgentRun(runId: string): Promise<Record<string, unknown>> {
+  return fetchJSON(`${BASE}/agent/run/${encodeURIComponent(runId)}`);
+}
+
+export interface AgentRunSummary {
+  run_id: string;
+  status: "running" | "completed" | "failed";
+  query: string;
+  bucket: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  error: string | null;
+  progress: number;
+  current_step: string | null;
+  profile: "fast" | "balanced" | "deep";
+}
+
+export function listAgentRuns(limit: number = 10): Promise<{ runs: AgentRunSummary[] }> {
+  return fetchJSON(`${BASE}/agent/runs?compact=true&limit=${limit}`);
+}
+
+export interface AgentPreset {
+  id: string;
+  label: string;
+  query: string;
+  profile: "fast" | "balanced" | "deep";
+  include_sar: boolean;
+  max_targets: number;
+}
+
+export function getAgentPresets(): Promise<{ presets: AgentPreset[] }> {
+  return fetchJSON(`${BASE}/agent/presets`);
 }
 
 export interface CounterfactualResult {

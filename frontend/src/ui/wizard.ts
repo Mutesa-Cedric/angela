@@ -1,5 +1,5 @@
-import { uploadFile, uploadMapped, previewCSV, loadSample, getSnapshot } from "../api/client";
-import type { CSVPreview } from "../api/client";
+import { uploadFile, uploadMapped, previewCSV, loadSample, getSnapshot, getAIWarmupStatus } from "../api/client";
+import type { CSVPreview, AIWarmupStatus } from "../api/client";
 import { computePositions } from "../layout";
 import { WizardParticles } from "./wizardParticles";
 import type { SceneContext } from "../scene";
@@ -231,7 +231,7 @@ const STEPS = [
   { label: "TRANSMITTING", subtitle: "Uploading transaction data...", duration: 800, progress: 10 },
   { label: "PARSING", subtitle: "Decoding {n} transactions...", duration: 1000, progress: 30 },
   { label: "MAPPING", subtitle: "Resolving {n} entity identities...", duration: 1200, progress: 55 },
-  { label: "ANALYZING", subtitle: "Computing risk scores...", duration: 1200, progress: 85 },
+  { label: "ANALYZING", subtitle: "Computing risk scores and priming AI...", duration: 1200, progress: 85 },
   { label: "SYSTEM READY", subtitle: "Intelligence graph online.", duration: 800, progress: 100 },
 ];
 
@@ -322,7 +322,7 @@ async function startUpload(uploadPromise: Promise<unknown>): Promise<void> {
   // --- Step 3: ANALYZING ---
   setStep(3);
   swapBackdrop("step-2", "step-3");
-  seqSubtitle.textContent = "Computing risk scores...";
+  seqSubtitle.textContent = "Computing risk scores and priming AI...";
 
   // Populate real nodes now (visible through the 30% opacity backdrop)
   if (snapshot) {
@@ -338,7 +338,22 @@ async function startUpload(uploadPromise: Promise<unknown>): Promise<void> {
 
   const riskSignals = Math.floor(m.n_entities * 0.3);
   animateCounter(seqCounter, riskSignals, STEPS[3].duration, "", " signals");
-  await delay(STEPS[3].duration);
+  await Promise.all([
+    delay(STEPS[3].duration),
+    pollAIWarmup(STEPS[3].duration, (status) => {
+      if (status.status === "running") {
+        const done = (status.entities_done ?? 0) + (status.sar_done ?? 0);
+        const total = (status.entities_total ?? 0) + (status.sar_total ?? 0);
+        if (total > 0) {
+          seqSubtitle.textContent = `Priming AI summaries (${done}/${total})...`;
+        }
+        if (typeof status.progress === "number") {
+          const stepProgress = 85 + Math.min(12, (status.progress / 100) * 12);
+          seqProgressBar.style.width = `${stepProgress}%`;
+        }
+      }
+    }),
+  ]);
 
   // --- Step 4: SYSTEM READY ---
   setStep(4);
@@ -438,4 +453,23 @@ function animateCounter(
     if (t < 1) requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+}
+
+async function pollAIWarmup(
+  maxMs: number,
+  onUpdate?: (status: AIWarmupStatus) => void,
+): Promise<void> {
+  const deadline = performance.now() + maxMs;
+  while (performance.now() < deadline) {
+    try {
+      const status = await getAIWarmupStatus();
+      if (onUpdate) onUpdate(status);
+      if (status.status === "completed" || status.status === "failed" || status.status === "disabled") {
+        return;
+      }
+    } catch {
+      return;
+    }
+    await delay(180);
+  }
 }

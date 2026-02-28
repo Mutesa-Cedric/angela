@@ -228,11 +228,48 @@
       <div id="nlq-input-row">
         <input type="text" id="nlq-input" placeholder="Ask about the graph... e.g. &quot;show high risk entities&quot;" autocomplete="off" />
         <button id="nlq-submit" title="Search">GO</button>
+        <button id="agent-submit" title="Run multi-agent investigation">AGENT</button>
         <button id="nlq-clear" title="Clear highlights" style="display:none">CLEAR</button>
+      </div>
+      <div id="agent-presets"></div>
+      <div id="agent-controls">
+        <label class="agent-control">
+          <input type="checkbox" id="agent-include-sar" />
+          Include SAR
+        </label>
+        <label class="agent-control">
+          Targets
+          <select id="agent-max-targets">
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="8">8</option>
+            <option value="10">10</option>
+          </select>
+        </label>
+        <label class="agent-control">
+          Profile
+          <select id="agent-profile">
+            <option value="fast">Fast</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="deep">Deep</option>
+          </select>
+        </label>
       </div>
       <div id="nlq-result" style="display:none">
         <span id="nlq-interpretation"></span>
         <span id="nlq-summary"></span>
+      </div>
+      <div id="agent-result" style="display:none">
+        <div id="agent-status-row">
+          <span id="agent-status">Idle</span>
+          <span id="agent-run-id"></span>
+        </div>
+        <div id="agent-progress-track"><div id="agent-progress-fill"></div></div>
+        <div id="agent-steps"></div>
+        <div id="agent-metrics"></div>
+        <div id="agent-top-entities"></div>
+        <div id="agent-summary" class="markdown-content"></div>
+        <div id="agent-history"></div>
       </div>
     </div>
 

@@ -11,6 +11,7 @@ from .assets.generator import ASSETS_DIR
 from .assets.orchestrator import handle_beacon_asset, handle_cluster_asset
 from .clusters import detect_clusters
 from .config import DATA_PATH
+from .investigation import generate_investigation_targets
 from .csv_processor import process_csv
 from .data_loader import store
 from .models import (
@@ -460,3 +461,18 @@ async def ai_explain_entity(
         "bucket": t,
         "summary": summary,
     }
+
+
+# --- Autopilot / Investigation ---
+
+@router.get("/autopilot/targets")
+async def get_autopilot_targets(
+    t: int = Query(..., description="Time bucket index"),
+) -> dict:
+    if t < 0 or t >= store.n_buckets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bucket t={t} out of range [0, {store.n_buckets - 1}]",
+        )
+    targets = generate_investigation_targets(t)
+    return {"bucket": t, "targets": targets}

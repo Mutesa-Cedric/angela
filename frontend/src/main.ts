@@ -13,6 +13,7 @@ import * as stats from "./ui/stats";
 import * as demo from "./ui/demo";
 import { addAxisLabels } from "./ui/axisLabels";
 import { wsClient } from "./api/ws";
+import { Autopilot } from "./camera/Autopilot";
 import type { Snapshot, SnapshotNode } from "./types";
 
 const canvas = document.getElementById("scene-canvas") as HTMLCanvasElement;
@@ -290,6 +291,21 @@ canvas.addEventListener("pointermove", (e) => {
   }
 });
 
+// --- Autopilot ---
+
+const autopilot = new Autopilot(ctx, nodeLayer);
+const autopilotBtn = document.getElementById("autopilot-btn") as HTMLButtonElement;
+
+autopilot.onState((state) => {
+  autopilotBtn.textContent = state === "running" ? "STOP" : "AUTOPILOT";
+  autopilotBtn.classList.toggle("running", state === "running");
+});
+
+autopilotBtn.addEventListener("click", () => {
+  if (!currentSnapshot) return;
+  autopilot.toggle(currentSnapshot.meta.t);
+});
+
 // --- Per-frame updates ---
 let lastFrameTime = performance.now();
 ctx.onFrame(() => {
@@ -298,6 +314,7 @@ ctx.onFrame(() => {
   lastFrameTime = now;
 
   nodeLayer.animate(dt);
+  autopilot.tick(dt);
   assetLayer.animate();
   edgeLayer.animate(dt);
   stats.tick();
@@ -335,6 +352,7 @@ async function startGraph(preloaded?: Snapshot): Promise<void> {
   document.getElementById("camera-presets")!.style.display = "flex";
   document.getElementById("stats-overlay")!.style.display = "flex";
   document.getElementById("demo-btn")!.style.display = "block";
+  document.getElementById("autopilot-btn")!.style.display = "block";
 
   // Connect WebSocket
   wsClient.connect();
@@ -351,6 +369,7 @@ async function init(): Promise<void> {
   document.getElementById("camera-presets")!.style.display = "none";
   document.getElementById("stats-overlay")!.style.display = "none";
   document.getElementById("demo-btn")!.style.display = "none";
+  document.getElementById("autopilot-btn")!.style.display = "none";
 
   try {
     const status = await getStatus();

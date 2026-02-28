@@ -1,4 +1,4 @@
-import type { EntityDetail, Neighborhood, Snapshot } from "../types";
+import type { AutopilotTarget, EntityDetail, Neighborhood, Snapshot } from "../types";
 
 const BASE = "/api";
 
@@ -52,4 +52,8 @@ export async function loadSample(): Promise<{ status: string; n_entities: number
     throw new Error(body.detail || `Load failed: HTTP ${res.status}`);
   }
   return res.json();
+}
+
+export function getAutopilotTargets(t: number): Promise<{ bucket: number; targets: AutopilotTarget[] }> {
+  return fetchJSON(`${BASE}/autopilot/targets?t=${t}`);
 }

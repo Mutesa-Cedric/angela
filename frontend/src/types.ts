@@ -82,3 +82,12 @@ export interface Neighborhood {
   nodes: SnapshotNode[];
   edges: SnapshotEdge[];
 }
+
+export interface AutopilotTarget {
+  type: "entity" | "cluster";
+  id: string;
+  entity_ids: string[];
+  risk_score: number;
+  label: string;
+  reason: string;
+}

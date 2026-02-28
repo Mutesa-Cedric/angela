@@ -339,6 +339,72 @@ body {
   background: rgba(255, 136, 68, 0.1);
 }
 
+/* ===== Autopilot ===== */
+#autopilot-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 100px;
+  background: rgba(34, 170, 136, 0.12);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(34, 170, 136, 0.4);
+  color: #22aa88;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  z-index: 10;
+}
+
+#autopilot-btn:hover {
+  background: rgba(34, 170, 136, 0.25);
+  border-color: rgba(34, 170, 136, 0.7);
+}
+
+#autopilot-btn.running {
+  color: #ff8844;
+  border-color: rgba(255, 136, 68, 0.4);
+  background: rgba(255, 136, 68, 0.1);
+  animation: autopilot-pulse 2s infinite;
+}
+
+@keyframes autopilot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 136, 68, 0.3); }
+  50% { box-shadow: 0 0 12px 2px rgba(255, 136, 68, 0.4); }
+}
+
+/* Autopilot annotation overlay */
+#autopilot-overlay {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(8, 8, 20, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(34, 170, 136, 0.4);
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e8f0;
+  letter-spacing: 0.5px;
+  z-index: 25;
+  max-width: 500px;
+  text-align: center;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+#autopilot-overlay.fade-in {
+  opacity: 1;
+}
+
+#autopilot-overlay.fade-out {
+  opacity: 0;
+}
+
 /* ===== Wizard ===== */
 .wizard-backdrop {
   position: fixed;

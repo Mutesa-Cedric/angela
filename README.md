@@ -6,6 +6,9 @@
 
 Agentic AI platform for anti-money laundering. 3D visualizations, multi-agent orchestra, automated SAR generation, and counterfactual explainability — all with a single natural language query.
 
+[![Demo Video](https://img.shields.io/badge/Demo-YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/oFBlPlm931c)
+[![Live](https://img.shields.io/badge/Live-angela.mcedric.dev-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://angela.mcedric.dev)
+
 ---
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -25,6 +28,40 @@ Agentic AI platform for anti-money laundering. 3D visualizations, multi-agent or
 ![boto3](https://img.shields.io/badge/boto3-AWS_SDK-FF9900?style=for-the-badge&logo=amazonwebservices&logoColor=white)
 
 </div>
+
+---
+
+## The Problem
+
+Financial institutions process millions of transactions daily. Compliance teams manually sift through alerts, trace entity relationships, and write Suspicious Activity Reports — a process that is slow, error-prone, and doesn't scale. Existing tools are flat dashboards that lack spatial context, offer no explainability for risk scores, and require weeks of analyst training.
+
+## The Solution
+
+ANGELA automates the end-to-end AML investigation workflow. Upload transaction data, and a multi-agent AI pipeline identifies high-risk entities, explains *why* they're suspicious via counterfactual analysis, generates SAR narratives, and presents everything in an interactive 3D graph where risk is literally visible — height, glow, and color encode risk, jurisdiction, and volume at a glance.
+
+## Target Users
+
+- **AML/Compliance Analysts** — Investigate flagged entities faster with AI-assisted research and one-click SAR generation.
+- **Compliance Officers & Managers** — Monitor portfolio risk via the executive dashboard with KPIs, jurisdiction heatmaps, and risk trends.
+- **Financial Institutions & Fintechs** — Reduce investigation time and false positives with explainable, auditable AI decisions.
+- **Regulators & Auditors** — Trace exactly which transaction patterns triggered an alert through counterfactual explainability.
+
+---
+
+## Team
+
+| Name | GitHub | Role |
+|------|--------|------|
+| Cedric Mutesa | [@Mutesa-Cedric](https://github.com/Mutesa-Cedric) | Full-Stack, CI/CD & Deployment |
+| Shah Dhairya Pankaj | [@wylited](https://github.com/wylited) | Backend, Infrastructure & DevOps |
+| Huang Jack Xian Chao | [@Jack-the-Pro101](https://github.com/Jack-the-Pro101) | Backend — Agents, Risk Engine & Real-time |
+| Chan Ho Yin | [@DanielChan0305](https://github.com/DanielChan0305) | UI/UX, Documentation & Pitch |
+
+---
+
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/oFBlPlm931c/maxresdefault.jpg)](https://youtu.be/oFBlPlm931c)
 
 ---
 
